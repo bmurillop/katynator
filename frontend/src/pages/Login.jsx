@@ -17,6 +17,8 @@ export default function Login() {
     setLoading(true)
     try {
       const tokens = await login(email, password)
+      localStorage.setItem('access_token', tokens.access_token)
+      localStorage.setItem('refresh_token', tokens.refresh_token)
       const me = await getMe()
       signIn(tokens, me)
       navigate(tokens.must_change_password ? '/cambiar-clave' : '/')
