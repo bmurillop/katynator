@@ -1,11 +1,19 @@
 from __future__ import annotations
 
-import google.generativeai as genai
+from google import genai
+from google.genai import errors as genai_errors
+from google.genai import types
 
-from app.ai.base import AIProvider, FinancialParseResult, parse_llm_response, render_prompt
+from app.ai.base import (
+    AIProvider,
+    FinancialParseResult,
+    make_retrying,
+    parse_llm_response,
+    render_prompt,
+)
 from app.config import settings
 
-_MODEL = "gemini-1.5-flash"
+_MODEL = "gemini-2.5-flash-lite"
 
 _ENTITY_PROMPT = """\
 Given the raw merchant or entity name below, which of the listed known entities is the best match?
@@ -26,18 +34,28 @@ Categories:
 {categories}"""
 
 
+def _is_transient(exc: BaseException) -> bool:
+    if isinstance(exc, genai_errors.ServerError):
+        return True  # 503 overloaded
+    if isinstance(exc, genai_errors.ClientError):
+        return getattr(exc, "code", 0) == 429  # rate limit
+    return False
+
+
 class GeminiProvider(AIProvider):
 
     def __init__(self) -> None:
-        genai.configure(api_key=settings.gemini_api_key)
-        self._model = genai.GenerativeModel(_MODEL)
+        self._client = genai.Client(api_key=settings.gemini_api_key)
 
     async def parse_financial_document(self, text: str) -> FinancialParseResult:
         prompt = render_prompt(text)
-        response = await self._model.generate_content_async(
-            prompt,
-            generation_config=genai.GenerationConfig(temperature=0),
-        )
+        async for attempt in make_retrying(_is_transient):
+            with attempt:
+                response = await self._client.aio.models.generate_content(
+                    model=_MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(temperature=0),
+                )
         return parse_llm_response(response.text)
 
     async def suggest_entity_match(
@@ -49,10 +67,13 @@ class GeminiProvider(AIProvider):
             raw_name=raw_name,
             candidates="\n".join(f"- {c}" for c in candidates),
         )
-        response = await self._model.generate_content_async(
-            prompt,
-            generation_config=genai.GenerationConfig(temperature=0),
-        )
+        async for attempt in make_retrying(_is_transient):
+            with attempt:
+                response = await self._client.aio.models.generate_content(
+                    model=_MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(temperature=0),
+                )
         answer = response.text.strip()
         return answer if answer in candidates else None
 
@@ -65,9 +86,12 @@ class GeminiProvider(AIProvider):
             description=description,
             categories="\n".join(f"- {c}" for c in available_categories),
         )
-        response = await self._model.generate_content_async(
-            prompt,
-            generation_config=genai.GenerationConfig(temperature=0),
-        )
+        async for attempt in make_retrying(_is_transient):
+            with attempt:
+                response = await self._client.aio.models.generate_content(
+                    model=_MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(temperature=0),
+                )
         answer = response.text.strip()
         return answer if answer in available_categories else None

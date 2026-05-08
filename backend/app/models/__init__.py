@@ -11,6 +11,7 @@ from app.models.enums import (
     ReconciliationStatus,
     RuleSource,
     TransactionDirection,
+    UnresolvedEntityStatus,
     UserRole,
 )
 from app.models.person import Person
@@ -25,13 +26,14 @@ from app.models.email_model import Email
 from app.models.document import Document
 from app.models.transaction_document import TransactionDocument
 from app.models.app_settings import AppSettings
+from app.models.unresolved_entity_name import UnresolvedEntityName
 
 __all__ = [
     "Base",
     "AccountType", "CategorySource", "Currency", "DocType", "EmailStatus",
     "EntityType", "MatchType", "PatternSource", "ReconciliationStatus",
-    "RuleSource", "TransactionDirection", "UserRole",
+    "RuleSource", "TransactionDirection", "UnresolvedEntityStatus", "UserRole",
     "Person", "User", "Entity", "EntityPattern", "Account", "Category",
     "CategoryRule", "Transaction", "Email", "Document", "TransactionDocument",
-    "AppSettings",
+    "AppSettings", "UnresolvedEntityName",
 ]

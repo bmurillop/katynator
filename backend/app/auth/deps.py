@@ -38,6 +38,11 @@ async def get_current_user(
     return user
 
 
+async def require_member(user: User = Depends(get_current_user)) -> User:
+    """Any authenticated user (member or admin)."""
+    return user
+
+
 async def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != UserRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")

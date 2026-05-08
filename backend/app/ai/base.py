@@ -5,8 +5,10 @@ All providers import from here; nothing here imports from a specific provider.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -14,8 +16,11 @@ from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from pydantic import BaseModel, Field, ValidationError
+from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait_exponential
 
 from app.models.enums import Currency, TransactionDirection
+
+logger = logging.getLogger(__name__)
 
 # ── Jinja2 template environment ──────────────────────────────────────────────
 
@@ -66,6 +71,36 @@ class FinancialParseResult(BaseModel):
 
     # Debug only — excluded from model_dump() / serialization
     raw_response: Optional[str] = Field(default=None, exclude=True)
+
+
+# ── Retry helper ─────────────────────────────────────────────────────────────
+
+def _log_retry(retry_state) -> None:
+    logger.warning(
+        "AI provider call failed (attempt %d/%d): %s — retrying in %.1fs",
+        retry_state.attempt_number,
+        retry_state.retry_object.stop.max_attempt_number,
+        retry_state.outcome.exception(),
+        retry_state.next_action.sleep if retry_state.next_action else 0,
+    )
+
+
+def make_retrying(is_transient: Callable[[BaseException], bool]) -> AsyncRetrying:
+    """Return a tenacity AsyncRetrying configured for transient provider errors.
+
+    Usage in a provider method::
+
+        async for attempt in make_retrying(_is_transient):
+            with attempt:
+                response = await self._client.call(...)
+    """
+    return AsyncRetrying(
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        stop=stop_after_attempt(3),
+        retry=retry_if_exception(is_transient),
+        before_sleep=_log_retry,
+        reraise=True,
+    )
 
 
 # ── Errors ───────────────────────────────────────────────────────────────────

@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import openai
 from openai import AsyncOpenAI
 
-from app.ai.base import AIProvider, FinancialParseResult, parse_llm_response, render_prompt
+from app.ai.base import (
+    AIProvider,
+    FinancialParseResult,
+    make_retrying,
+    parse_llm_response,
+    render_prompt,
+)
 from app.config import settings
 
 _ENTITY_PROMPT = """\
@@ -24,6 +31,14 @@ Categories:
 {categories}"""
 
 
+def _is_transient(exc: BaseException) -> bool:
+    if isinstance(exc, (openai.RateLimitError, openai.APIConnectionError)):
+        return True
+    if isinstance(exc, openai.APIStatusError):
+        return exc.status_code in (429, 500, 502, 503, 504)
+    return False
+
+
 class LMStudioProvider(AIProvider):
 
     def __init__(self) -> None:
@@ -35,11 +50,13 @@ class LMStudioProvider(AIProvider):
 
     async def parse_financial_document(self, text: str) -> FinancialParseResult:
         prompt = render_prompt(text)
-        response = await self._client.chat.completions.create(
-            model=self._model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-        )
+        async for attempt in make_retrying(_is_transient):
+            with attempt:
+                response = await self._client.chat.completions.create(
+                    model=self._model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0,
+                )
         return parse_llm_response(response.choices[0].message.content or "")
 
     async def suggest_entity_match(
@@ -51,12 +68,14 @@ class LMStudioProvider(AIProvider):
             raw_name=raw_name,
             candidates="\n".join(f"- {c}" for c in candidates),
         )
-        response = await self._client.chat.completions.create(
-            model=self._model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-            max_tokens=64,
-        )
+        async for attempt in make_retrying(_is_transient):
+            with attempt:
+                response = await self._client.chat.completions.create(
+                    model=self._model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0,
+                    max_tokens=64,
+                )
         answer = (response.choices[0].message.content or "").strip()
         return answer if answer in candidates else None
 
@@ -69,11 +88,13 @@ class LMStudioProvider(AIProvider):
             description=description,
             categories="\n".join(f"- {c}" for c in available_categories),
         )
-        response = await self._client.chat.completions.create(
-            model=self._model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-            max_tokens=64,
-        )
+        async for attempt in make_retrying(_is_transient):
+            with attempt:
+                response = await self._client.chat.completions.create(
+                    model=self._model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0,
+                    max_tokens=64,
+                )
         answer = (response.choices[0].message.content or "").strip()
         return answer if answer in available_categories else None

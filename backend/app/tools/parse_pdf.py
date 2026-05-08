@@ -15,8 +15,14 @@ Options:
 import argparse
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
+
+# The CLI does not use the database or JWT — set safe fallbacks so app.config
+# loads cleanly without a full .env file.  Real values are irrelevant here.
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://cli:cli@localhost/cli")
+os.environ.setdefault("SECRET_KEY", "cli-not-used")
 
 
 def _extract_text(pdf_path: Path) -> str:

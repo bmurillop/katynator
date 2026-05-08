@@ -13,6 +13,7 @@ import anthropic
 from app.ai.base import (
     AIProvider,
     FinancialParseResult,
+    make_retrying,
     parse_llm_response,
     render_system_prompt,
 )
@@ -40,6 +41,11 @@ Categories:
 {categories}"""
 
 
+def _is_transient(exc: BaseException) -> bool:
+    # 529 = Anthropic overloaded; 500 = internal server error
+    return isinstance(exc, (anthropic.RateLimitError, anthropic.InternalServerError, anthropic.APIConnectionError))
+
+
 class ClaudeProvider(AIProvider):
 
     def __init__(self) -> None:
@@ -48,18 +54,20 @@ class ClaudeProvider(AIProvider):
         self._system_prompt = render_system_prompt()
 
     async def parse_financial_document(self, text: str) -> FinancialParseResult:
-        response = await self._client.messages.create(
-            model=_MODEL,
-            max_tokens=_MAX_TOKENS,
-            system=[
-                {
-                    "type": "text",
-                    "text": self._system_prompt,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            messages=[{"role": "user", "content": text}],
-        )
+        async for attempt in make_retrying(_is_transient):
+            with attempt:
+                response = await self._client.messages.create(
+                    model=_MODEL,
+                    max_tokens=_MAX_TOKENS,
+                    system=[
+                        {
+                            "type": "text",
+                            "text": self._system_prompt,
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
+                    messages=[{"role": "user", "content": text}],
+                )
         return parse_llm_response(response.content[0].text)
 
     async def suggest_entity_match(
@@ -71,11 +79,13 @@ class ClaudeProvider(AIProvider):
             raw_name=raw_name,
             candidates="\n".join(f"- {c}" for c in candidates),
         )
-        response = await self._client.messages.create(
-            model=_MODEL,
-            max_tokens=64,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        async for attempt in make_retrying(_is_transient):
+            with attempt:
+                response = await self._client.messages.create(
+                    model=_MODEL,
+                    max_tokens=64,
+                    messages=[{"role": "user", "content": prompt}],
+                )
         answer = response.content[0].text.strip()
         return answer if answer in candidates else None
 
@@ -88,10 +98,12 @@ class ClaudeProvider(AIProvider):
             description=description,
             categories="\n".join(f"- {c}" for c in available_categories),
         )
-        response = await self._client.messages.create(
-            model=_MODEL,
-            max_tokens=64,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        async for attempt in make_retrying(_is_transient):
+            with attempt:
+                response = await self._client.messages.create(
+                    model=_MODEL,
+                    max_tokens=64,
+                    messages=[{"role": "user", "content": prompt}],
+                )
         answer = response.content[0].text.strip()
         return answer if answer in available_categories else None

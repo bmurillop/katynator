@@ -44,7 +44,16 @@ currency        : "CRC" for Costa Rican colones (₡, CRC, colones).
                   Null if undetermined.
 statement_date  : Date the statement was generated or printed.
 period_start    : First day of the billing or statement period.
+                  Use ONLY a date that is explicitly labeled in the document header or metadata
+                  (e.g. "fecha último estado", "período desde", "fecha inicio").
+                  If the document contains "fecha último estado", that IS the period_start.
+                  Fall back to the date of the earliest transaction only if no labeled date exists.
+                  NEVER use dates from advisory notices, fee announcements, legal notices,
+                  or general body text — only labeled header/metadata dates.
 period_end      : Last day of the billing or statement period.
+                  Use a date labeled "fecha éste estado", "fecha este estado", "período hasta",
+                  "fecha fin", or "hasta" in the header/metadata.
+                  Fall back to statement_date if none is found.
 opening_balance : Balance at the start of the period. Null if not shown.
 closing_balance : Balance at end of period (saldo al cierre, saldo final). Null if not shown.
 claimed_*       : Totals and counts explicitly stated by the bank in its summary section.

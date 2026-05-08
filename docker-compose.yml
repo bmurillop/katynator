@@ -22,7 +22,7 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - raw_files:/data/raw
+      - raw_emails:/data/raw_emails
     networks:
       - finnet
     environment:
@@ -46,4 +46,4 @@ networks:
 
 volumes:
   pgdata:
-  raw_files:
+  raw_emails:

@@ -74,3 +74,10 @@ class ReconciliationStatus(str, enum.Enum):
     passed = "passed"
     failed = "failed"
     not_applicable = "not_applicable"
+
+
+class UnresolvedEntityStatus(str, enum.Enum):
+    pending = "pending"
+    matched = "matched"    # confirmed match to existing entity
+    created = "created"    # new entity created from this name
+    ignored = "ignored"    # user dismissed it
