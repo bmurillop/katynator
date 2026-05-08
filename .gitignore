@@ -1,0 +1,36 @@
+# Environment
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+*.egg
+
+# Node
+node_modules/
+frontend/dist/
+frontend/build/
+
+# Docker volumes (local dev)
+.postgres-data/
+.raw-files/
+
+# Samples — real documents, never commit
+samples/*.pdf
+samples/*.html
+samples/*.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
