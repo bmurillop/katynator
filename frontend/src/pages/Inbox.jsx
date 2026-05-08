@@ -15,13 +15,14 @@ const PAGE_SIZE = 20
 
 function EntityResolutionCard({ item, onDone }) {
   const [mode, setMode] = useState(null) // null | 'link' | 'create'
+  const [search, setSearch] = useState('')
   const [entityId, setEntityId] = useState('')
   const [newName, setNewName] = useState(item.raw_name)
   const [newType, setNewType] = useState('merchant')
   const [saving, setSaving] = useState(false)
-  const { data: entities } = useQuery({
-    queryKey: ['entities-search', item.normalized],
-    queryFn: () => listEntities({ search: item.raw_name.split(' ')[0], page_size: 20 }),
+  const { data: entities, isFetching } = useQuery({
+    queryKey: ['entities-search', search],
+    queryFn: () => listEntities({ search: search || undefined, page_size: 30 }),
     enabled: mode === 'link',
   })
 
@@ -70,8 +71,23 @@ function EntityResolutionCard({ item, onDone }) {
 
       {mode === 'link' && (
         <div className="space-y-2">
-          <select className="select text-sm" value={entityId} onChange={(e) => setEntityId(e.target.value)}>
-            <option value="">— Seleccionar entidad —</option>
+          <input
+            type="text"
+            className="input text-sm"
+            placeholder="Buscar entidad…"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setEntityId('') }}
+            autoFocus
+          />
+          <select
+            className="select text-sm"
+            value={entityId}
+            onChange={(e) => setEntityId(e.target.value)}
+            size={Math.min((entities?.items?.length || 0) + 1, 6)}
+          >
+            <option value="">
+              {isFetching ? 'Buscando…' : entities?.items?.length ? '— Seleccionar —' : '— Sin resultados —'}
+            </option>
             {entities?.items?.map((e) => (
               <option key={e.id} value={e.id}>{e.canonical_name}</option>
             ))}
@@ -80,7 +96,7 @@ function EntityResolutionCard({ item, onDone }) {
             <button onClick={handleLink} disabled={!entityId || saving} className="btn-primary text-xs">
               {saving ? '…' : 'Vincular'}
             </button>
-            <button onClick={() => setMode(null)} className="btn-ghost text-xs">Cancelar</button>
+            <button onClick={() => { setMode(null); setSearch('') }} className="btn-ghost text-xs">Cancelar</button>
           </div>
         </div>
       )}
@@ -106,6 +122,7 @@ function EntityResolutionCard({ item, onDone }) {
     </div>
   )
 }
+
 
 function UnresolvedTab() {
   const [page, setPage] = useState(1)
