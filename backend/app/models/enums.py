@@ -11,6 +11,7 @@ class EntityType(str, enum.Enum):
     merchant = "merchant"
     issuer = "issuer"
     person = "person"
+    income_source = "income_source"
     other = "other"
 
 

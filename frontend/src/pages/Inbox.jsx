@@ -109,6 +109,7 @@ function EntityResolutionCard({ item, onDone }) {
             <option value="merchant">Comercio</option>
             <option value="person">Persona</option>
             <option value="issuer">Emisor</option>
+            <option value="income_source">Fuente de ingreso</option>
             <option value="other">Otro</option>
           </select>
           <div className="flex gap-2">
