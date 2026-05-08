@@ -74,6 +74,9 @@ function InviteUserModal({ persons, onClose, onSaved }) {
             </select>
             <p className="text-[10px] text-ink/40 mt-1">Si no seleccionas uno, se crea un miembro con el nombre del correo.</p>
           </div>
+          <p className="text-xs text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+            No se envía ningún correo. Comparte la contraseña temporal con el usuario de forma directa (WhatsApp, en persona, etc.).
+          </p>
         </div>
 
         {error && <p className="text-red-500 text-xs">{error}</p>}
