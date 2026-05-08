@@ -66,5 +66,5 @@ async def update_account(
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(row, field, value)
 
-    await db.flush()
+    await db.commit()
     return AccountOut.model_validate(row)

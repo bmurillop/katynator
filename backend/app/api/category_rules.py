@@ -35,7 +35,7 @@ async def create_rule(body: CategoryRuleCreate, db: AsyncSession = Depends(get_d
     )
     db.add(rule)
     try:
-        await db.flush()
+        await db.commit()
     except Exception:
         await db.rollback()
         raise HTTPException(status_code=409, detail="Ya existe una regla con esa combinación de entidad/patrón/tipo")
@@ -56,7 +56,7 @@ async def update_rule(
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(row, field, value)
 
-    await db.flush()
+    await db.commit()
     return CategoryRuleOut.model_validate(row)
 
 

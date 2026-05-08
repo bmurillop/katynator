@@ -80,7 +80,7 @@ async def create_entity(body: EntityCreate, db: AsyncSession = Depends(get_db)):
         confirmed=body.confirmed,
     )
     db.add(entity)
-    await db.flush()
+    await db.commit()
     return EntityOut.model_validate(entity)
 
 
@@ -95,7 +95,7 @@ async def update_entity(
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(row, field, value)
 
-    await db.flush()
+    await db.commit()
     return EntityOut.model_validate(row)
 
 
@@ -131,7 +131,7 @@ async def add_pattern(
         source=body.source,
     )
     db.add(pattern)
-    await db.flush()
+    await db.commit()
     return EntityPatternOut.model_validate(pattern)
 
 

@@ -74,7 +74,7 @@ async def create_user(body: UserCreate, db: AsyncSession = Depends(get_db)):
         username = body.email.split("@")[0].replace(".", " ").title()
         person = Person(name=username)
         db.add(person)
-        await db.flush()
+        await db.commit()
         person_id = person.id
 
     user = User(
@@ -85,7 +85,7 @@ async def create_user(body: UserCreate, db: AsyncSession = Depends(get_db)):
         must_change_password=True,
     )
     db.add(user)
-    await db.flush()
+    await db.commit()
     return UserOut.model_validate(user)
 
 
@@ -124,7 +124,7 @@ async def update_user(
     for field, value in updates.items():
         setattr(row, field, value)
 
-    await db.flush()
+    await db.commit()
     return UserOut.model_validate(row)
 
 
@@ -147,5 +147,5 @@ async def reset_password(
     row.password_hash = _pwd_ctx.hash(body.new_password)
     row.must_change_password = True
     row.token_version += 1  # invalidate all existing sessions
-    await db.flush()
+    await db.commit()
     return {"message": "Contraseña restablecida. El usuario deberá cambiarla al iniciar sesión."}

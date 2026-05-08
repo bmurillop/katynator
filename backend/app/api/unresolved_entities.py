@@ -86,7 +86,7 @@ async def resolve_to_existing(
 
     item.status = UnresolvedEntityStatus.matched
     item.resolved_entity_id = entity.id
-    await db.flush()
+    await db.commit()
     return MessageResponse(message="Nombre vinculado a entidad existente")
 
 
@@ -109,13 +109,13 @@ async def create_entity_from_unresolved(
         confirmed=True,
     )
     db.add(entity)
-    await db.flush()
+    await db.commit()
 
     await _upsert_pattern(item.normalized, item.raw_name, entity.id, db)
 
     item.status = UnresolvedEntityStatus.created
     item.resolved_entity_id = entity.id
-    await db.flush()
+    await db.commit()
     return EntityOut.model_validate(entity)
 
 
@@ -127,7 +127,7 @@ async def create_entity_from_unresolved(
 async def ignore_unresolved(item_id: UUID, db: AsyncSession = Depends(get_db)):
     item = await _get_pending(item_id, db)
     item.status = UnresolvedEntityStatus.ignored
-    await db.flush()
+    await db.commit()
     return MessageResponse(message="Nombre descartado")
 
 
@@ -163,4 +163,4 @@ async def _upsert_pattern(normalized: str, raw: str, entity_id: UUID, db: AsyncS
         source=PatternSource.user_added,
     )
     db.add(pattern)
-    await db.flush()
+    await db.commit()

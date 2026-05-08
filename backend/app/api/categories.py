@@ -30,7 +30,7 @@ async def create_category(body: CategoryCreate, db: AsyncSession = Depends(get_d
 
     cat = Category(name=body.name, color=body.color, icon=body.icon, is_system=False)
     db.add(cat)
-    await db.flush()
+    await db.commit()
     return CategoryOut.model_validate(cat)
 
 
@@ -47,5 +47,5 @@ async def update_category(
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(row, field, value)
 
-    await db.flush()
+    await db.commit()
     return CategoryOut.model_validate(row)

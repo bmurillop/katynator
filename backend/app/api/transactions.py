@@ -218,5 +218,5 @@ async def update_transaction(
     if "category_id" in updates and "category_source" not in updates:
         row.category_source = CategorySource.user_set
 
-    await db.flush()
+    await db.commit()
     return TransactionOut.model_validate(row)

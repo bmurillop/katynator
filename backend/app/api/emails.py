@@ -93,7 +93,7 @@ async def retry_email(
 
     row.status = EmailStatus.pending
     row.error_message = None
-    await db.flush()
+    await db.commit()
 
     background_tasks.add_task(_run_pipeline, email_id)
     return MessageResponse(message="Email en cola para reprocesar")
