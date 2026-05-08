@@ -1,5 +1,7 @@
 # Development Guide
 
+> **Audience:** developers and AI agents continuing this project. For end-user setup, see [deployment.md](deployment.md).
+
 ## Prerequisites
 
 - Docker + Docker Compose (for the full stack)
