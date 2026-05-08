@@ -12,3 +12,11 @@ class PersonOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PersonCreate(BaseModel):
+    name: str
+
+
+class PersonUpdate(BaseModel):
+    name: str

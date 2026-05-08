@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import client from '../api/client'
 import { useAuth } from '../context/AuthContext'
+import { listPersons, createPerson, updatePerson } from '../api/persons'
 
 function Section({ title, children }) {
   return (
@@ -51,6 +52,36 @@ export default function Settings() {
   }
 
   const currentProvider = settings?.ai_provider || 'gemini'
+
+  // ── Personas state ──────────────────────────────────────────────────────────
+  const { data: persons } = useQuery({
+    queryKey: ['persons'],
+    queryFn: listPersons,
+    enabled: isAdmin,
+  })
+  const [editingPerson, setEditingPerson] = useState(null) // null | { id, name } | 'new'
+  const [personName, setPersonName] = useState('')
+  const [personSaving, setPersonSaving] = useState(false)
+
+  const openNewPerson = () => { setEditingPerson('new'); setPersonName('') }
+  const openEditPerson = (p) => { setEditingPerson(p); setPersonName(p.name) }
+  const cancelPerson = () => { setEditingPerson(null); setPersonName('') }
+
+  const savePerson = async () => {
+    if (!personName.trim()) return
+    setPersonSaving(true)
+    try {
+      if (editingPerson === 'new') {
+        await createPerson({ name: personName.trim() })
+      } else {
+        await updatePerson(editingPerson.id, { name: personName.trim() })
+      }
+      qc.invalidateQueries({ queryKey: ['persons'] })
+      cancelPerson()
+    } finally {
+      setPersonSaving(false)
+    }
+  }
 
   return (
     <div className="space-y-5 max-w-2xl">
@@ -109,6 +140,67 @@ export default function Settings() {
                 </div>
               </div>
             ))}
+          </div>
+        </Section>
+      )}
+
+      {isAdmin && (
+        <Section title="Miembros de la familia">
+          <div className="space-y-2">
+            {(persons || []).map((p) => (
+              <div key={p.id} className="flex items-center justify-between bg-[#F5EFE0] rounded-lg px-4 py-3">
+                {editingPerson?.id === p.id ? (
+                  <input
+                    className="input text-sm flex-1 mr-3"
+                    value={personName}
+                    onChange={(e) => setPersonName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') savePerson(); if (e.key === 'Escape') cancelPerson() }}
+                    autoFocus
+                  />
+                ) : (
+                  <p className="text-sm text-ink">{p.name}</p>
+                )}
+                <div className="flex gap-2 shrink-0">
+                  {editingPerson?.id === p.id ? (
+                    <>
+                      <button onClick={savePerson} disabled={personSaving || !personName.trim()} className="btn-primary text-xs py-1 px-3">
+                        {personSaving ? '…' : 'Guardar'}
+                      </button>
+                      <button onClick={cancelPerson} className="btn-ghost text-xs py-1 px-3 border border-brown-600/30">
+                        Cancelar
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={() => openEditPerson(p)} className="text-xs text-ink/30 hover:text-amber-500 transition-colors">
+                      ✎ Editar
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {editingPerson === 'new' ? (
+              <div className="flex items-center gap-2 bg-[#F5EFE0] rounded-lg px-4 py-3">
+                <input
+                  className="input text-sm flex-1"
+                  placeholder="Nombre del miembro…"
+                  value={personName}
+                  onChange={(e) => setPersonName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') savePerson(); if (e.key === 'Escape') cancelPerson() }}
+                  autoFocus
+                />
+                <button onClick={savePerson} disabled={personSaving || !personName.trim()} className="btn-primary text-xs py-1 px-3 shrink-0">
+                  {personSaving ? '…' : 'Agregar'}
+                </button>
+                <button onClick={cancelPerson} className="btn-ghost text-xs py-1 px-3 border border-brown-600/30 shrink-0">
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <button onClick={openNewPerson} className="btn-ghost text-sm border border-brown-600/30 w-full">
+                + Agregar miembro
+              </button>
+            )}
           </div>
         </Section>
       )}
