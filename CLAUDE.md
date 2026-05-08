@@ -91,6 +91,36 @@ These are absolute. Don't relax them without updating the brief first.
 - **For verification, spawn a fresh code-reviewer subagent** after a phase lands. The
   agent that wrote the code is a poor reviewer of its own work.
 
+## Multi-bank design intent
+
+The system targets **multiple Costa Rican banks from day one**, even though the only
+current sample is Banco Nacional CR. Banks in scope include (but are not limited to):
+
+- Banco Nacional de Costa Rica (BNCR) — current sample
+- Mutual Alajuela
+- Promerica
+- BAC San José
+- BCR (Banco de Costa Rica)
+
+**Consequences for every design decision:**
+
+- **The AI prompt must be bank-agnostic.** Describe what to extract (header metadata,
+  transaction rows, totals), not how any specific bank formats it. The AI identifies
+  the bank from document content and returns it in `bank_hint`.
+- **The prompt template is the adaptation layer.** If a specific bank needs a hint
+  (e.g. "descriptions may start with a numeric reference"), add it as a conditional
+  block in the Jinja2 template, not in Python code.
+- **Reconciliation is optional by design.** Not all banks expose opening/closing/totals
+  in a machine-readable way. `reconciliation_status = not_applicable` is a first-class
+  outcome, not a fallback.
+- **Dedup normalization rules must generalize.** The ≥6-digit leading numeric strip is
+  BNCR-specific behavior that happens to apply broadly; don't frame it as "BNCR rule"
+  in code. Write it as a general normalization step.
+- **Account matching uses `account_number_hint` + `bank_entity_id`, never a bank name
+  string.** New banks resolve through the entity system, not a `if bank == "BNCR"` branch.
+- **New samples welcome.** As statements from other banks arrive, add them to `samples/`
+  and run `parse_pdf` against them immediately to validate the prompt holds up.
+
 ## Project-specific gotchas
 
 (Append to this list as we discover them.)
