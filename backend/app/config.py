@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     imap_folder: str = "INBOX"
     imap_poll_interval_minutes: int = 5
 
+    # CORS — comma-separated list of allowed origins
+    cors_origins: str = "http://finanzas.internal,https://finanzas.internal,http://localhost,http://localhost:5173,http://localhost:3000"
+
     # AI provider
     ai_provider: str = "gemini"
     gemini_api_key: str = ""

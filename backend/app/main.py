@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import settings as _config
 from app.auth.bootstrap import bootstrap_admin, seed_categories
 from app.api import health, auth, settings
 from app.api import emails, persons, accounts, entities, categories, category_rules, transactions, unresolved_entities, users
@@ -11,13 +12,7 @@ from app.scheduler import start_scheduler, stop_scheduler
 
 logging.basicConfig(level=logging.INFO)
 
-_CORS_ORIGINS = [
-    "http://finanzas.internal",
-    "https://finanzas.internal",
-    "http://localhost",
-    "http://localhost:5173",  # Vite dev server (Phase 5)
-    "http://localhost:3000",
-]
+_CORS_ORIGINS = [o.strip() for o in _config.cors_origins.split(",") if o.strip()]
 
 
 @asynccontextmanager
