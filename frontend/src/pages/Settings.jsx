@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import client from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { listPersons, createPerson, updatePerson, deletePerson } from '../api/persons'
+import { listUsers, createUser, updateUser, resetPassword } from '../api/users'
 
 function Section({ title, children }) {
   return (
@@ -12,6 +13,197 @@ function Section({ title, children }) {
     </div>
   )
 }
+
+// ── User modals ───────────────────────────────────────────────────────────────
+
+function InviteUserModal({ persons, onClose, onSaved }) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [role, setRole] = useState('member')
+  const [personId, setPersonId] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSave = async () => {
+    if (!email.trim() || !password) return
+    setSaving(true)
+    setError('')
+    try {
+      await createUser({ email: email.trim(), password, role, person_id: personId || null })
+      onSaved()
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Error al crear el usuario')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-ink">Invitar usuario</h2>
+          <button onClick={onClose} className="text-ink/30 hover:text-ink text-xl leading-none">✕</button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-ink/60 mb-1">Correo electrónico</label>
+            <input type="email" className="input text-sm" value={email}
+              onChange={(e) => setEmail(e.target.value)} placeholder="usuario@ejemplo.com" autoFocus />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ink/60 mb-1">Contraseña temporal</label>
+            <input type="text" className="input text-sm font-mono" value={password}
+              onChange={(e) => setPassword(e.target.value)} placeholder="El usuario deberá cambiarla" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ink/60 mb-1">Rol</label>
+            <select className="select text-sm" value={role} onChange={(e) => setRole(e.target.value)}>
+              <option value="member">Miembro</option>
+              <option value="admin">Administrador</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ink/60 mb-1">Miembro de la familia (opcional)</label>
+            <select className="select text-sm" value={personId} onChange={(e) => setPersonId(e.target.value)}>
+              <option value="">— Crear automáticamente —</option>
+              {(persons || []).map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <p className="text-[10px] text-ink/40 mt-1">Si no seleccionas uno, se crea un miembro con el nombre del correo.</p>
+          </div>
+        </div>
+
+        {error && <p className="text-red-500 text-xs">{error}</p>}
+
+        <div className="flex gap-2 pt-1">
+          <button onClick={handleSave} disabled={saving || !email.trim() || !password} className="btn-primary text-sm flex-1">
+            {saving ? 'Creando…' : 'Invitar'}
+          </button>
+          <button onClick={onClose} className="btn-ghost text-sm flex-1 border border-brown-600/30">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EditUserModal({ targetUser, persons, currentUserId, onClose, onSaved }) {
+  const [role, setRole] = useState(targetUser.role)
+  const [personId, setPersonId] = useState(targetUser.person_id || '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const isSelf = targetUser.id === currentUserId
+
+  const handleSave = async () => {
+    setSaving(true)
+    setError('')
+    try {
+      await updateUser(targetUser.id, { role, person_id: personId || null })
+      onSaved()
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Error al actualizar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-ink">Editar usuario</h2>
+          <button onClick={onClose} className="text-ink/30 hover:text-ink text-xl leading-none">✕</button>
+        </div>
+
+        <p className="text-sm text-ink/60 font-mono bg-[#F5EFE0] rounded px-3 py-2">{targetUser.email}</p>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-ink/60 mb-1">Rol</label>
+            <select className="select text-sm" value={role} onChange={(e) => setRole(e.target.value)} disabled={isSelf}>
+              <option value="member">Miembro</option>
+              <option value="admin">Administrador</option>
+            </select>
+            {isSelf && <p className="text-[10px] text-ink/40 mt-1">No puedes cambiar tu propio rol.</p>}
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ink/60 mb-1">Miembro de la familia</label>
+            <select className="select text-sm" value={personId} onChange={(e) => setPersonId(e.target.value)}>
+              <option value="">— Sin asignar —</option>
+              {(persons || []).map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {error && <p className="text-red-500 text-xs">{error}</p>}
+
+        <div className="flex gap-2 pt-1">
+          <button onClick={handleSave} disabled={saving} className="btn-primary text-sm flex-1">
+            {saving ? 'Guardando…' : 'Guardar'}
+          </button>
+          <button onClick={onClose} className="btn-ghost text-sm flex-1 border border-brown-600/30">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ResetPasswordModal({ targetUser, onClose, onSaved }) {
+  const [password, setPassword] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSave = async () => {
+    if (!password) return
+    setSaving(true)
+    setError('')
+    try {
+      await resetPassword(targetUser.id, password)
+      onSaved()
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Error al restablecer')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-ink">Restablecer contraseña</h2>
+          <button onClick={onClose} className="text-ink/30 hover:text-ink text-xl leading-none">✕</button>
+        </div>
+
+        <p className="text-sm text-ink/60">
+          Se asignará una contraseña temporal a <span className="font-medium text-ink">{targetUser.email}</span>.
+          El usuario deberá cambiarla al iniciar sesión.
+        </p>
+
+        <div>
+          <label className="block text-xs font-medium text-ink/60 mb-1">Nueva contraseña temporal</label>
+          <input type="text" className="input text-sm font-mono" value={password}
+            onChange={(e) => setPassword(e.target.value)} placeholder="mínimo 8 caracteres" autoFocus />
+        </div>
+
+        {error && <p className="text-red-500 text-xs">{error}</p>}
+
+        <div className="flex gap-2 pt-1">
+          <button onClick={handleSave} disabled={saving || !password} className="btn-primary text-sm flex-1">
+            {saving ? 'Guardando…' : 'Restablecer'}
+          </button>
+          <button onClick={onClose} className="btn-ghost text-sm flex-1 border border-brown-600/30">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Main Settings ─────────────────────────────────────────────────────────────
 
 export default function Settings() {
   const { user } = useAuth()
@@ -25,7 +217,7 @@ export default function Settings() {
 
   const { data: users } = useQuery({
     queryKey: ['users'],
-    queryFn: () => client.get('/users').then((r) => r.data),
+    queryFn: listUsers,
     enabled: isAdmin,
   })
 
@@ -53,13 +245,22 @@ export default function Settings() {
 
   const currentProvider = settings?.ai_provider || 'gemini'
 
+  // ── User modal state ────────────────────────────────────────────────────────
+  const [userModal, setUserModal] = useState(null) // null | 'invite' | { mode: 'edit'|'reset', user }
+
+  const refreshUsers = () => {
+    qc.invalidateQueries({ queryKey: ['users'] })
+    qc.invalidateQueries({ queryKey: ['persons'] })
+    setUserModal(null)
+  }
+
   // ── Personas state ──────────────────────────────────────────────────────────
   const { data: persons } = useQuery({
     queryKey: ['persons'],
     queryFn: listPersons,
     enabled: isAdmin,
   })
-  const [editingPerson, setEditingPerson] = useState(null) // null | { id, name } | 'new'
+  const [editingPerson, setEditingPerson] = useState(null)
   const [personName, setPersonName] = useState('')
   const [personSaving, setPersonSaving] = useState(false)
 
@@ -83,7 +284,7 @@ export default function Settings() {
     }
   }
 
-  const [deleteConflict, setDeleteConflict] = useState(null) // null | { name, accounts, users }
+  const [deleteConflict, setDeleteConflict] = useState(null)
 
   const handleDeletePerson = async (p) => {
     try {
@@ -95,6 +296,8 @@ export default function Settings() {
       }
     }
   }
+
+  const personMap = Object.fromEntries((persons || []).map((p) => [p.id, p]))
 
   return (
     <div className="space-y-5 max-w-2xl">
@@ -119,12 +322,9 @@ export default function Settings() {
             </select>
           </div>
           {isAdmin && (
-            <button onClick={handleSaveProvider} className="btn-primary text-sm shrink-0">
-              Guardar
-            </button>
+            <button onClick={handleSaveProvider} className="btn-primary text-sm shrink-0">Guardar</button>
           )}
         </div>
-
         <div className="flex gap-3 items-center">
           <button onClick={handleTestAI} disabled={testing} className="btn-ghost text-sm border border-brown-600/30">
             {testing ? 'Probando…' : '↻ Probar conexión'}
@@ -140,20 +340,38 @@ export default function Settings() {
       {isAdmin && (
         <Section title="Usuarios">
           <div className="space-y-2">
-            {users?.map((u) => (
+            {(users || []).map((u) => (
               <div key={u.id} className="flex items-center justify-between bg-[#F5EFE0] rounded-lg px-4 py-3">
                 <div>
-                  <p className="text-sm text-ink">{u.email}</p>
-                  <p className="text-xs text-ink/40 capitalize">{u.role}</p>
+                  <p className="text-sm text-ink font-medium">{u.email}</p>
+                  <p className="text-xs text-ink/40">
+                    <span className="capitalize">{u.role === 'admin' ? 'Administrador' : 'Miembro'}</span>
+                    {u.person_id && personMap[u.person_id] ? ` · ${personMap[u.person_id].name}` : ''}
+                  </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   {u.must_change_password && (
                     <span className="badge bg-amber-500/20 text-amber-500 text-[10px]">Debe cambiar clave</span>
                   )}
+                  <button
+                    onClick={() => setUserModal({ mode: 'edit', user: u })}
+                    className="text-xs text-ink/30 hover:text-amber-500 transition-colors"
+                  >
+                    ✎ Editar
+                  </button>
+                  <button
+                    onClick={() => setUserModal({ mode: 'reset', user: u })}
+                    className="text-xs text-ink/30 hover:text-red-500 transition-colors"
+                  >
+                    ↺ Clave
+                  </button>
                 </div>
               </div>
             ))}
           </div>
+          <button onClick={() => setUserModal('invite')} className="btn-ghost text-sm border border-brown-600/30 w-full">
+            + Invitar usuario
+          </button>
         </Section>
       )}
 
@@ -173,7 +391,7 @@ export default function Settings() {
                 ) : (
                   <p className="text-sm text-ink">{p.name}</p>
                 )}
-                <div className="flex gap-2 shrink-0">
+                <div className="flex gap-3 shrink-0">
                   {editingPerson?.id === p.id ? (
                     <>
                       <button onClick={savePerson} disabled={personSaving || !personName.trim()} className="btn-primary text-xs py-1 px-3">
@@ -184,14 +402,14 @@ export default function Settings() {
                       </button>
                     </>
                   ) : (
-                    <div className="flex gap-3">
+                    <>
                       <button onClick={() => openEditPerson(p)} className="text-xs text-ink/30 hover:text-amber-500 transition-colors">
                         ✎ Editar
                       </button>
                       <button onClick={() => handleDeletePerson(p)} className="text-xs text-ink/30 hover:text-red-500 transition-colors">
                         🗑 Eliminar
                       </button>
-                    </div>
+                    </>
                   )}
                 </div>
               </div>
@@ -223,44 +441,6 @@ export default function Settings() {
         </Section>
       )}
 
-      {deleteConflict && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
-            <h2 className="text-base font-semibold text-ink">No se puede eliminar a {deleteConflict.name}</h2>
-            <p className="text-sm text-ink/60">Tiene los siguientes recursos asignados. Reasígnalos primero.</p>
-
-            {deleteConflict.accounts?.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-ink/50 uppercase tracking-wide mb-1.5">Cuentas</p>
-                <ul className="space-y-1">
-                  {deleteConflict.accounts.map((a) => (
-                    <li key={a.id} className="flex items-center gap-2 text-sm text-ink bg-[#F5EFE0] rounded px-3 py-2">
-                      <span className="font-medium">{a.label}</span>
-                      <span className="text-xs text-ink/40">{a.currency}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {deleteConflict.users?.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-ink/50 uppercase tracking-wide mb-1.5">Usuario vinculado</p>
-                <ul className="space-y-1">
-                  {deleteConflict.users.map((u) => (
-                    <li key={u.id} className="text-sm text-ink bg-[#F5EFE0] rounded px-3 py-2">{u.email}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <button onClick={() => setDeleteConflict(null)} className="btn-primary text-sm w-full">
-              Entendido
-            </button>
-          </div>
-        </div>
-      )}
-
       <Section title="Acerca de">
         <dl className="space-y-2 text-sm">
           <div className="flex justify-between">
@@ -277,6 +457,56 @@ export default function Settings() {
           </div>
         </dl>
       </Section>
+
+      {/* ── Modals ── */}
+      {userModal === 'invite' && (
+        <InviteUserModal persons={persons} onClose={() => setUserModal(null)} onSaved={refreshUsers} />
+      )}
+      {userModal?.mode === 'edit' && (
+        <EditUserModal
+          targetUser={userModal.user}
+          persons={persons}
+          currentUserId={user?.id}
+          onClose={() => setUserModal(null)}
+          onSaved={refreshUsers}
+        />
+      )}
+      {userModal?.mode === 'reset' && (
+        <ResetPasswordModal targetUser={userModal.user} onClose={() => setUserModal(null)} onSaved={refreshUsers} />
+      )}
+
+      {deleteConflict && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h2 className="text-base font-semibold text-ink">No se puede eliminar a {deleteConflict.name}</h2>
+            <p className="text-sm text-ink/60">Tiene los siguientes recursos asignados. Reasígnalos primero.</p>
+            {deleteConflict.accounts?.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-ink/50 uppercase tracking-wide mb-1.5">Cuentas</p>
+                <ul className="space-y-1">
+                  {deleteConflict.accounts.map((a) => (
+                    <li key={a.id} className="flex items-center gap-2 text-sm text-ink bg-[#F5EFE0] rounded px-3 py-2">
+                      <span className="font-medium">{a.label}</span>
+                      <span className="text-xs text-ink/40">{a.currency}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {deleteConflict.users?.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-ink/50 uppercase tracking-wide mb-1.5">Usuario vinculado</p>
+                <ul className="space-y-1">
+                  {deleteConflict.users.map((u) => (
+                    <li key={u.id} className="text-sm text-ink bg-[#F5EFE0] rounded px-3 py-2">{u.email}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <button onClick={() => setDeleteConflict(null)} className="btn-primary text-sm w-full">Entendido</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
