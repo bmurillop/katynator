@@ -7,9 +7,6 @@ import { listUnresolved } from '../api/unresolvedEntities'
 import CurrencyAmount, { CurrencyBadge } from '../components/CurrencyAmount'
 import { Link } from 'react-router-dom'
 
-const now = new Date()
-const FIRST_OF_MONTH = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-
 const MONTH_FMT = new Intl.DateTimeFormat('es-CR', { month: 'short', year: '2-digit' })
 const DONUT_COLORS = ['amber', 'rose', 'blue', 'emerald', 'violet', 'orange', 'cyan', 'pink', 'indigo', 'teal']
 const formatMonth = (ym) => {
@@ -44,32 +41,34 @@ function StatCard({ label, value, sub, accent }) {
 
 function TopCategoriesChart({ cur, items, fmtVal }) {
   const filtered = (items || []).filter((i) => i.currency === cur).slice(0, 8)
-  if (!filtered.length) return null
-
   const data = filtered.map((i) => ({ name: i.category_name, value: i.total }))
   const colors = DONUT_COLORS.slice(0, data.length)
 
   return (
     <div className="card">
       <p className="text-xs text-ink/40 font-medium uppercase tracking-wide mb-3">
-        Top categorías · gastos del mes
+        Top categorías · gastos acumulados
       </p>
-      <div className="flex flex-col sm:flex-row gap-4 items-center">
-        <DonutChart
-          data={data}
-          category="value"
-          index="name"
-          valueFormatter={fmtVal}
-          colors={colors}
-          showLabel={false}
-          className="h-36 w-36 shrink-0"
-        />
-        <Legend
-          categories={data.map((d) => d.name)}
-          colors={colors}
-          className="text-xs"
-        />
-      </div>
+      {data.length === 0 ? (
+        <p className="text-xs text-ink/30 py-8 text-center">Sin gastos categorizados aún</p>
+      ) : (
+        <div className="flex flex-col sm:flex-row gap-4 items-center">
+          <DonutChart
+            data={data}
+            category="value"
+            index="name"
+            valueFormatter={fmtVal}
+            colors={colors}
+            showLabel={false}
+            className="h-36 w-36 shrink-0"
+          />
+          <Legend
+            categories={data.map((d) => d.name)}
+            colors={colors}
+            className="text-xs"
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -142,8 +141,8 @@ export default function Dashboard() {
     queryFn: () => listAccounts({ page_size: 50 }),
   })
   const { data: categoryBreakdown } = useQuery({
-    queryKey: ['category-breakdown-month'],
-    queryFn: () => getCategoryBreakdown({ date_from: FIRST_OF_MONTH }),
+    queryKey: ['category-breakdown'],
+    queryFn: () => getCategoryBreakdown(),
   })
   const { data: emails } = useQuery({
     queryKey: ['emails', 'failed'],
