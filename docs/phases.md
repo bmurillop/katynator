@@ -16,11 +16,11 @@ The canonical spec is `family-finance-tracker-brief.md` at the repo root. This f
 
 ## Phase 2 — AI Providers ✅
 
-- `AIProvider` abstract base class
+- `AIProvider` abstract base class with `parse_financial_document`, `suggest_entity_match`, `suggest_category`
 - Gemini provider (default)
 - Claude (Anthropic SDK) provider
 - LM Studio (OpenAI-compatible) provider
-- Provider factory with runtime switching
+- Provider factory with runtime switching from DB setting
 - Jinja2 prompt template (`parse_statement.jinja2`)
 - `parse_pdf` CLI tool for prompt iteration without the full pipeline
 - `GET/PATCH /api/settings` with AI provider field
@@ -37,60 +37,75 @@ The canonical spec is `family-finance-tracker-brief.md` at the repo root. This f
 - Derived quality score (0–1, 7 structural checks)
 - Entity resolution (exact → normalized → fuzzy → AI → unresolved)
 - Transaction creation with `dedup_key` and `ON CONFLICT DO NOTHING`
-- Two-tier category rule engine
+- Two-tier category rule engine (entity + memo pattern, priority-ordered)
 - Account auto-linking via `account_number_hint` + `bank_entity_id`
+- **AI category suggestions**: when no rule matches, `suggest_category` is called and result stored as `category_source=ai_suggested`
 - Migration 0002: `unresolved_entity_names` table
 - Migration 0003: 12 seeded system categories
+- Migration 0004: `income_source` entity type
+- Migration 0005: `starts_with` match type
+- Migration 0006: `is_transfer` on transactions, `sets_transfer` on category_rules, nullable `category_id` on rules
 - Unit tests for all critical pipeline modules
 
 ## Phase 4 — Core API ✅
 
 - `/api/persons` CRUD
 - `/api/accounts` CRUD
-- `/api/transactions` list + filters + PATCH + monthly summary
+- `/api/transactions` list + filters + PATCH
+- `/api/transactions/summary` — debit/credit totals per currency (excludes transfers)
+- `/api/transactions/summary/monthly` — month-bucketed totals for charts (excludes transfers)
+- `/api/transactions/summary/by-category` — debit totals grouped by category + currency (used for donut chart)
+- `/api/transactions/suggest-categories` — bulk AI suggestion for all uncategorized transactions
 - `/api/entities` list + PATCH + pattern management
-- `/api/unresolved-entities` list + resolve
+- `/api/unresolved-entities` list + resolve + ignore
 - `/api/categories` CRUD
-- `/api/category-rules` CRUD
-- `/api/emails` list + reprocess
+- `/api/category-rules` CRUD + preview + apply single + reapply all
+- `/api/emails` list + retry + manual poll trigger
 - `/api/users` CRUD (admin only)
-- Pagination on list endpoints
+- Pagination on all list endpoints
 
 ## Phase 5 — Frontend ✅
 
 - Vite + React + Tailwind + Tremor scaffold
 - JWT auth flow with forced password change
-- All 7 pages: Dashboard, Transactions, Accounts, Inbox, Entities, Categories, Settings
-- Light-background palette (cream/amber/brown), dark sidebar
-- Monthly bar charts on Dashboard (CRC and USD separate series)
-- Full CRUD modals for accounts, entities, categories, rules, users
+- **Dashboard**: stat cards (income/expense per currency), monthly bar charts, top-categories donut chart (current month, per currency), inbox attention cards
+- **Transactions**: full list with filters (person, account, currency, direction, category, date range, needs_review), inline category + transfer modal with rule creation, re-apply all rules button
+- **Accounts**: list with balance, currency, confirmation status
+- **Inbox** (3 tabs):
+  - *Entidades sin resolver*: resolution cards with link-to-existing or create-new flow
+  - *Transacciones por revisar*: expandable rows with inline category + entity editing; AI suggestion chip (violet IA badge) with one-click confirm; bulk "✦ Sugerir con IA" button
+  - *Correos fallidos*: error log with retry and manual poll trigger
+- **Entities**: list + detail modal with inline edit (name, display name, type)
+- **Categories** (2 tabs):
+  - *Categorías*: create + edit
+  - *Reglas*: create + **edit** (click row or ✎ button); transfer rules (sets_transfer); live match-count preview; apply single rule; reapply all
+- **Settings**: AI provider selector, IMAP config display
+- Sidebar inbox badge: live count of needs_review transactions + pending unresolved entities, refreshes every 60 s
 - `CurrencyAmount` component — every amount shows its currency symbol
-- Pagination component
+- `CurrencyBadge`, `Pagination` components
 
 ---
 
 ## Phase 6 — Dashboard & Reports 🔲
 
-- Reports page (`/informes`)
+- ✅ Top spending categories donut chart on Dashboard (done)
+- 🔲 Reports page (`/informes`)
   - Monthly bar chart — income vs expenses, per currency
   - Category breakdown — donut or bar, filterable by person, date range, currency
-  - Account balance history — line chart
+  - Account balance history — line chart over time
   - Spending trend by category over time
-- Dashboard: top spending categories donut chart
-- Dashboard: account balance cards grouped by person
 
 ## Phase 7 — Polish 🔲
 
-- Inbox: inline scope-picker modal for categorizing transactions
-  - "Just this one" / "All to entity" / "All where memo contains X" / "Custom regex"
-  - Re-applies rules retroactively on confirm
-- Inbox: unresolved entity resolution cards with suggested matches
-- Inbox: failed document cards with specific reconciliation diff shown
-- Settings page: live IMAP test button, live AI test button
-- Settings page: polling interval control
-- Email/document processing log (`/bandeja/emails`)
-- Mobile responsiveness polish
-- Loading, empty, and error states for all pages
+- 🔲 Inbox: failed document cards with specific reconciliation diff shown
+- 🔲 Settings: live IMAP test button (`POST /api/settings/test-imap`)
+- 🔲 Settings: live AI test button (`POST /api/settings/test-ai`)
+- 🔲 Email/document processing log page (`/emails`)
+- 🔲 User management page (`/usuarios`, admin only) — invite flow, password reset
+- 🔲 Persons page (`/personas`) — family member management
+- 🔲 Account balance updates after reconciliation passes (`last_known_balance`, `balance_as_of`)
+- 🔲 Mobile responsiveness polish
+- 🔲 Loading, empty, and error states for all pages
 
 ## Phase 8 — Later 🔲
 
