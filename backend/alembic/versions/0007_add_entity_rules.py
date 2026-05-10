@@ -8,7 +8,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM, UUID
 
 revision: str = "0007"
 down_revision: Union[str, None] = "0006"
@@ -23,7 +23,7 @@ def upgrade() -> None:
         sa.Column("memo_pattern", sa.Text(), nullable=False),
         sa.Column(
             "match_type",
-            sa.Enum("any", "contains", "starts_with", "exact", "regex", name="match_type", create_type=False),
+            PG_ENUM("any", "contains", "starts_with", "exact", "regex", name="match_type", create_type=False),
             nullable=False,
             server_default="contains",
         ),
@@ -31,7 +31,7 @@ def upgrade() -> None:
         sa.Column("priority", sa.Integer(), nullable=False, server_default="50"),
         sa.Column(
             "source",
-            sa.Enum("user_confirmed", "ai_suggested", name="rule_source", create_type=False),
+            PG_ENUM("user_confirmed", "ai_suggested", name="rule_source", create_type=False),
             nullable=False,
             server_default="user_confirmed",
         ),
