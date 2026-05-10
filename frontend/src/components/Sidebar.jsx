@@ -1,19 +1,39 @@
 import { NavLink, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
+import { listTransactions } from '../api/transactions'
+import { listUnresolved } from '../api/unresolvedEntities'
 
 const navItems = [
   { to: '/',              label: 'Panel',          icon: '▦', exact: true },
   { to: '/transacciones', label: 'Transacciones',  icon: '↕' },
   { to: '/cuentas',       label: 'Cuentas',        icon: '🏦' },
-  { to: '/bandeja',       label: 'Bandeja',        icon: '⚑' },
+  { to: '/bandeja',       label: 'Bandeja',        icon: '⚑', badge: true },
   { to: '/entidades',     label: 'Entidades',      icon: '◈' },
   { to: '/categorias',    label: 'Categorías',     icon: '⊞' },
   { to: '/configuracion', label: 'Configuración',  icon: '⚙' },
 ]
 
+function useInboxCount() {
+  const { data: txns } = useQuery({
+    queryKey: ['inbox-badge-txns'],
+    queryFn: () => listTransactions({ needs_review: true, page: 1, page_size: 1 }),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+  const { data: unresolved } = useQuery({
+    queryKey: ['inbox-badge-unresolved'],
+    queryFn: () => listUnresolved({ status: 'pending', page: 1, page_size: 1 }),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+  return (txns?.total ?? 0) + (unresolved?.total ?? 0)
+}
+
 export default function Sidebar({ onClose }) {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
+  const inboxCount = useInboxCount()
 
   const handleLogout = async () => {
     await signOut()
@@ -38,7 +58,7 @@ export default function Sidebar({ onClose }) {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {navItems.map(({ to, label, icon, exact }) => (
+        {navItems.map(({ to, label, icon, exact, badge }) => (
           <NavLink
             key={to}
             to={to}
@@ -53,7 +73,12 @@ export default function Sidebar({ onClose }) {
             }
           >
             <span className="w-5 text-center">{icon}</span>
-            {label}
+            <span className="flex-1">{label}</span>
+            {badge && inboxCount > 0 && (
+              <span className="bg-amber-500 text-brown-900 text-[10px] font-bold rounded-full px-1.5 leading-5 min-w-[20px] text-center">
+                {inboxCount > 99 ? '99+' : inboxCount}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

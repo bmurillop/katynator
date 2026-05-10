@@ -57,9 +57,14 @@ Abre `http://localhost` (o `http://finanzas.internal` si configuraste DNS en el 
 | Proveedores de IA (Gemini, Claude, LM Studio) | ✅ Completo |
 | Pipeline de correo → PDF → IA → transacciones | ✅ Completo |
 | API REST completa | ✅ Completo |
-| Interfaz web (todas las páginas principales) | ✅ Completo |
+| Interfaz web (panel, transacciones, cuentas, entidades, categorías) | ✅ Completo |
+| Bandeja de entrada (entidades sin resolver, revisión, correos fallidos) | ✅ Completo |
+| Sugerencias de categoría con IA + confirmación en la bandeja | ✅ Completo |
+| Reglas de categorización (crear, editar, re-aplicar, transferencias) | ✅ Completo |
+| Panel de transacciones internas (is_transfer) | ✅ Completo |
 | Página de reportes + gráficas avanzadas | 🔲 Pendiente |
-| Categorización inline en la bandeja de entrada | 🔲 Pendiente |
+| Página de emails procesados | 🔲 Pendiente |
+| Gestión de usuarios (admin) | 🔲 Pendiente |
 | Pulido mobile | 🔲 Pendiente |
 
 Ver detalles completos → [`docs/phases.md`](docs/phases.md)

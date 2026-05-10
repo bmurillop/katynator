@@ -1,13 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
-import { BarChart } from '@tremor/react'
-import { getSummary, getMonthlySummary } from '../api/transactions'
+import { BarChart, DonutChart, Legend } from '@tremor/react'
+import { getSummary, getMonthlySummary, getCategoryBreakdown } from '../api/transactions'
 import { listAccounts } from '../api/accounts'
 import { listEmails } from '../api/emails'
 import { listUnresolved } from '../api/unresolvedEntities'
 import CurrencyAmount, { CurrencyBadge } from '../components/CurrencyAmount'
 import { Link } from 'react-router-dom'
 
+const now = new Date()
+const FIRST_OF_MONTH = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+
 const MONTH_FMT = new Intl.DateTimeFormat('es-CR', { month: 'short', year: '2-digit' })
+const DONUT_COLORS = ['amber', 'rose', 'blue', 'emerald', 'violet', 'orange', 'cyan', 'pink', 'indigo', 'teal']
 const formatMonth = (ym) => {
   const [y, m] = ym.split('-').map(Number)
   return MONTH_FMT.format(new Date(y, m - 1, 1))
@@ -38,7 +42,39 @@ function StatCard({ label, value, sub, accent }) {
   )
 }
 
-function CurrencySection({ label, cur, summary, monthly }) {
+function TopCategoriesChart({ cur, items, fmtVal }) {
+  const filtered = (items || []).filter((i) => i.currency === cur).slice(0, 8)
+  if (!filtered.length) return null
+
+  const data = filtered.map((i) => ({ name: i.category_name, value: i.total }))
+  const colors = DONUT_COLORS.slice(0, data.length)
+
+  return (
+    <div className="card">
+      <p className="text-xs text-ink/40 font-medium uppercase tracking-wide mb-3">
+        Top categorías · gastos del mes
+      </p>
+      <div className="flex flex-col sm:flex-row gap-4 items-center">
+        <DonutChart
+          data={data}
+          category="value"
+          index="name"
+          valueFormatter={fmtVal}
+          colors={colors}
+          showLabel={false}
+          className="h-36 w-36 shrink-0"
+        />
+        <Legend
+          categories={data.map((d) => d.name)}
+          colors={colors}
+          className="text-xs"
+        />
+      </div>
+    </div>
+  )
+}
+
+function CurrencySection({ label, cur, summary, monthly, categoryItems }) {
   const getTotal = (dir) => summary?.summaries?.find((s) => s.direction === dir)?.total ?? 0
   const getCount = (dir) => summary?.summaries?.find((s) => s.direction === dir)?.count ?? 0
   const chartData = buildChartData(monthly, cur)
@@ -66,21 +102,24 @@ function CurrencySection({ label, cur, summary, monthly }) {
           accent="text-green-600"
         />
       </div>
-      {chartData.length > 1 && (
-        <div className="card">
-          <p className="text-xs text-ink/40 font-medium uppercase tracking-wide mb-3">Últimos meses</p>
-          <BarChart
-            data={chartData}
-            index="month"
-            categories={['Gastos', 'Ingresos']}
-            colors={['rose', 'emerald']}
-            valueFormatter={fmtVal}
-            showLegend
-            showGridLines={false}
-            className="h-40"
-          />
-        </div>
-      )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {chartData.length > 1 && (
+          <div className="card">
+            <p className="text-xs text-ink/40 font-medium uppercase tracking-wide mb-3">Últimos meses</p>
+            <BarChart
+              data={chartData}
+              index="month"
+              categories={['Gastos', 'Ingresos']}
+              colors={['rose', 'emerald']}
+              valueFormatter={fmtVal}
+              showLegend
+              showGridLines={false}
+              className="h-40"
+            />
+          </div>
+        )}
+        <TopCategoriesChart cur={cur} items={categoryItems} fmtVal={fmtVal} />
+      </div>
     </div>
   )
 }
@@ -102,6 +141,10 @@ export default function Dashboard() {
     queryKey: ['accounts'],
     queryFn: () => listAccounts({ page_size: 50 }),
   })
+  const { data: categoryBreakdown } = useQuery({
+    queryKey: ['category-breakdown-month'],
+    queryFn: () => getCategoryBreakdown({ date_from: FIRST_OF_MONTH }),
+  })
   const { data: emails } = useQuery({
     queryKey: ['emails', 'failed'],
     queryFn: () => listEmails({ status: 'failed', page_size: 5 }),
@@ -122,8 +165,8 @@ export default function Dashboard() {
         <p className="text-sm text-ink/50 mt-0.5">Resumen financiero familiar</p>
       </div>
 
-      <CurrencySection label="Colones (CRC)" cur="CRC" summary={crcSummary} monthly={monthly} />
-      <CurrencySection label="Dólares (USD)" cur="USD" summary={usdSummary} monthly={monthly} />
+      <CurrencySection label="Colones (CRC)" cur="CRC" summary={crcSummary} monthly={monthly} categoryItems={categoryBreakdown?.items} />
+      <CurrencySection label="Dólares (USD)" cur="USD" summary={usdSummary} monthly={monthly} categoryItems={categoryBreakdown?.items} />
 
       {(unconfirmedCount > 0 || failedEmailCount > 0 || pendingEntityCount > 0) && (
         <div className="space-y-2">

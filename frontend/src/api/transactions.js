@@ -17,3 +17,6 @@ export const getMonthlySummary = (params) =>
 
 export const suggestCategoriesAI = () =>
   client.post('/transactions/suggest-categories').then((r) => r.data)
+
+export const getCategoryBreakdown = (params) =>
+  client.get('/transactions/summary/by-category', { params }).then((r) => r.data)

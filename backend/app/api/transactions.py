@@ -142,6 +142,69 @@ async def transaction_summary_monthly(
     )
 
 
+@router.get("/transactions/summary/by-category", dependencies=[Depends(require_member)])
+async def transaction_summary_by_category(
+    person_id: UUID | None = None,
+    account_id: UUID | None = None,
+    currency: Currency | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Debit totals grouped by category — used for the spending breakdown chart."""
+    q = (
+        select(
+            Transaction.category_id,
+            Category.name.label("category_name"),
+            Category.color.label("category_color"),
+            Transaction.currency,
+            func.sum(Transaction.amount).label("total"),
+            func.count(Transaction.id).label("count"),
+        )
+        .join(Category, Transaction.category_id == Category.id)
+        .where(
+            Transaction.direction == TransactionDirection.debit,
+            Transaction.is_transfer.is_(False),
+            Transaction.category_id.isnot(None),
+        )
+        .group_by(
+            Transaction.category_id,
+            Category.name,
+            Category.color,
+            Transaction.currency,
+        )
+        .order_by(func.sum(Transaction.amount).desc())
+    )
+
+    if account_id:
+        q = q.where(Transaction.account_id == account_id)
+    elif person_id:
+        q = q.join(Account, Transaction.account_id == Account.id).where(
+            Account.person_id == person_id
+        )
+    if currency:
+        q = q.where(Transaction.currency == currency)
+    if date_from:
+        q = q.where(Transaction.date >= date_from)
+    if date_to:
+        q = q.where(Transaction.date <= date_to)
+
+    rows = (await db.execute(q)).all()
+    return {
+        "items": [
+            {
+                "category_id": str(r.category_id),
+                "category_name": r.category_name,
+                "category_color": r.category_color,
+                "currency": r.currency,
+                "total": float(r.total),
+                "count": r.count,
+            }
+            for r in rows
+        ]
+    }
+
+
 @router.post("/transactions/suggest-categories", dependencies=[Depends(require_member)])
 async def suggest_categories_ai(db: AsyncSession = Depends(get_db)):
     """Ask the active AI provider to suggest categories for all uncategorized, non-transfer transactions."""
