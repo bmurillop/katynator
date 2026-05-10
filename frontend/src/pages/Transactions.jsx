@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { listTransactions, updateTransaction } from '../api/transactions'
 import { listCategories } from '../api/categories'
 import { listAccounts } from '../api/accounts'
-import { createRule, previewRule } from '../api/categoryRules'
+import { createRule, previewRule, applyRule, reapplyRules } from '../api/categoryRules'
 import CurrencyAmount, { CurrencyBadge } from '../components/CurrencyAmount'
 import Pagination from '../components/Pagination'
 
@@ -21,6 +21,7 @@ function CategoryModal({ txn, categories, onClose, onSaved }) {
   const [limitToEntity, setLimitToEntity] = useState(!!txn.merchant_entity_id)
   const [memoPattern, setMemoPattern] = useState(txn.description_normalized)
   const [matchType, setMatchType] = useState('starts_with')
+  const [applyToExisting, setApplyToExisting] = useState(true)
   const [saving, setSaving] = useState(false)
   const qc = useQueryClient()
 
@@ -70,7 +71,10 @@ function CategoryModal({ txn, categories, onClose, onSaved }) {
           }
         }
         if (rulePayload.entity_id || rulePayload.memo_pattern) {
-          await createRule(rulePayload)
+          const createdRule = await createRule(rulePayload)
+          if (applyToExisting && createdRule?.id) {
+            await applyRule(createdRule.id)
+          }
         }
       }
 
@@ -172,13 +176,39 @@ function CategoryModal({ txn, categories, onClose, onSaved }) {
               )}
 
               {previewData != null && (
-                <p className={`text-xs font-medium ${previewData.count > 0 ? 'text-green-700' : 'text-ink/40'}`}>
-                  {previewData.count > 0
-                    ? `Aplicaría a ${previewData.count} transacción${previewData.count !== 1 ? 'es' : ''} existente${previewData.count !== 1 ? 's' : ''}`
-                    : 'Sin coincidencias en transacciones existentes'}
-                </p>
+                <div className="space-y-2">
+                  <p className={`text-xs font-medium ${previewData.count > 0 ? 'text-green-700' : 'text-ink/40'}`}>
+                    {previewData.count > 0
+                      ? `Aplicaría a ${previewData.count} transacción${previewData.count !== 1 ? 'es' : ''} existente${previewData.count !== 1 ? 's' : ''}`
+                      : 'Sin coincidencias en transacciones existentes'}
+                  </p>
+                  {previewData.count > 0 && (
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={applyToExisting}
+                        onChange={(e) => setApplyToExisting(e.target.checked)}
+                        className="accent-amber-500 w-4 h-4"
+                      />
+                      <span className="text-sm text-ink/70">Aplicar también a esas transacciones ahora</span>
+                    </label>
+                  )}
+                </div>
               )}
             </div>
+          )}
+
+          {/* Apply-to-existing for entity scope */}
+          {categoryId && scope === 'entity' && txn.merchant_entity_id && (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={applyToExisting}
+                onChange={(e) => setApplyToExisting(e.target.checked)}
+                className="accent-amber-500 w-4 h-4"
+              />
+              <span className="text-sm text-ink/70">Aplicar también a transacciones existentes de esta entidad</span>
+            </label>
           )}
         </div>
 
@@ -201,6 +231,8 @@ export default function Transactions() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [modalTxn, setModalTxn] = useState(null)
+  const [reapplying, setReapplying] = useState(false)
+  const [reapplyResult, setReapplyResult] = useState(null)
   const qc = useQueryClient()
 
   const params = {
@@ -226,6 +258,18 @@ export default function Transactions() {
     qc.invalidateQueries({ queryKey: ['transactions'] })
   }
 
+  const handleReapply = async () => {
+    setReapplying(true)
+    setReapplyResult(null)
+    try {
+      const result = await reapplyRules()
+      setReapplyResult(result)
+      qc.invalidateQueries({ queryKey: ['transactions'] })
+    } finally {
+      setReapplying(false)
+    }
+  }
+
   const resetPage = () => setPage(1)
 
   return (
@@ -243,6 +287,20 @@ export default function Transactions() {
         <div>
           <h1 className="text-xl font-bold text-ink">Transacciones</h1>
           {data && <p className="text-xs text-ink/40 mt-0.5">{data.total} resultado{data.total !== 1 ? 's' : ''}</p>}
+        </div>
+        <div className="flex items-center gap-3">
+          {reapplyResult && (
+            <p className="text-xs text-green-700 font-medium">
+              ✓ {reapplyResult.applied} categorizad{reapplyResult.applied !== 1 ? 'as' : 'a'} de {reapplyResult.checked} revisadas
+            </p>
+          )}
+          <button
+            onClick={handleReapply}
+            disabled={reapplying}
+            className="btn-ghost text-sm border border-brown-600/30"
+          >
+            {reapplying ? 'Aplicando…' : '↻ Re-aplicar reglas'}
+          </button>
         </div>
       </div>
 

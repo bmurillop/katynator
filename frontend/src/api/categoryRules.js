@@ -17,3 +17,9 @@ export const previewRule = ({ memo_pattern, match_type, entity_id } = {}) => {
   if (entity_id) params.entity_id = entity_id
   return client.get('/category-rules/preview', { params }).then((r) => r.data)
 }
+
+export const applyRule = (id) =>
+  client.post(`/category-rules/${id}/apply`).then((r) => r.data)
+
+export const reapplyRules = () =>
+  client.post('/category-rules/reapply').then((r) => r.data)

@@ -4,17 +4,33 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import require_admin, require_member
 from app.db import get_db
 from app.models.category_rule import CategoryRule
+from app.models.enums import CategorySource, MatchType
 from app.models.transaction import Transaction
+from app.pipeline.rule_engine import apply_rules
 from app.schemas.category_rule import CategoryRuleCreate, CategoryRuleOut, CategoryRuleUpdate
 from app.schemas.common import MessageResponse
 
 router = APIRouter()
+
+
+def _apply_memo_filter(q, match_type: str, memo_pattern: str):
+    """Add a description_normalized filter matching the given match_type."""
+    p = memo_pattern.lower()
+    if match_type == "contains":
+        return q.where(Transaction.description_normalized.ilike(f"%{p}%"))
+    if match_type == "starts_with":
+        return q.where(Transaction.description_normalized.ilike(f"{p}%"))
+    if match_type == "exact":
+        return q.where(Transaction.description_normalized == p)
+    if match_type == "regex":
+        return q.where(Transaction.description_normalized.op("~*")(memo_pattern))
+    return q
 
 
 @router.get("/category-rules/preview", dependencies=[Depends(require_member)])
@@ -29,17 +45,38 @@ async def preview_rule(
     if entity_id:
         q = q.where(Transaction.merchant_entity_id == entity_id)
     if memo_pattern:
-        p = memo_pattern.lower()
-        if match_type == "contains":
-            q = q.where(Transaction.description_normalized.ilike(f"%{p}%"))
-        elif match_type == "starts_with":
-            q = q.where(Transaction.description_normalized.ilike(f"{p}%"))
-        elif match_type == "exact":
-            q = q.where(Transaction.description_normalized == p)
-        elif match_type == "regex":
-            q = q.where(Transaction.description_normalized.op("~*")(memo_pattern))
+        q = _apply_memo_filter(q, match_type, memo_pattern)
     count = (await db.execute(q)).scalar() or 0
     return {"count": count}
+
+
+@router.post("/category-rules/reapply", dependencies=[Depends(require_member)])
+async def reapply_rules(db: AsyncSession = Depends(get_db)):
+    """Re-run all rules against every transaction not manually categorized by the user."""
+    rules = (
+        await db.execute(select(CategoryRule).order_by(CategoryRule.priority.desc()))
+    ).scalars().all()
+
+    q = select(Transaction).where(
+        or_(
+            Transaction.category_source.is_(None),
+            Transaction.category_source == CategorySource.ai_suggested,
+            Transaction.category_source == CategorySource.rule,
+        )
+    )
+    txns = (await db.execute(q)).scalars().all()
+
+    applied = 0
+    for txn in txns:
+        cat_id, cat_source = apply_rules(rules, txn.merchant_entity_id, txn.description_normalized)
+        if cat_id and txn.category_id != cat_id:
+            txn.category_id = cat_id
+            txn.category_source = cat_source
+            txn.needs_review = False
+            applied += 1
+
+    await db.commit()
+    return {"applied": applied, "checked": len(txns)}
 
 
 @router.get("/category-rules", response_model=list[CategoryRuleOut], dependencies=[Depends(require_member)])
@@ -68,6 +105,40 @@ async def create_rule(body: CategoryRuleCreate, db: AsyncSession = Depends(get_d
         raise HTTPException(status_code=409, detail="Ya existe una regla con esa combinación de entidad/patrón/tipo")
 
     return CategoryRuleOut.model_validate(rule)
+
+
+@router.post("/category-rules/{rule_id}/apply", dependencies=[Depends(require_member)])
+async def apply_rule(rule_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Apply a single rule to all matching transactions that haven't been manually categorized."""
+    rule = (
+        await db.execute(select(CategoryRule).where(CategoryRule.id == rule_id))
+    ).scalar_one_or_none()
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Regla no encontrada")
+
+    q = select(Transaction).where(
+        or_(
+            Transaction.category_source.is_(None),
+            Transaction.category_source == CategorySource.ai_suggested,
+            Transaction.category_source == CategorySource.rule,
+        )
+    )
+    if rule.entity_id:
+        q = q.where(Transaction.merchant_entity_id == rule.entity_id)
+    if rule.memo_pattern and rule.match_type != MatchType.any:
+        q = _apply_memo_filter(q, rule.match_type.value, rule.memo_pattern)
+
+    txns = (await db.execute(q)).scalars().all()
+    applied = 0
+    for txn in txns:
+        if txn.category_id != rule.category_id:
+            txn.category_id = rule.category_id
+            txn.category_source = CategorySource.rule
+            txn.needs_review = False
+            applied += 1
+
+    await db.commit()
+    return {"applied": applied}
 
 
 @router.patch("/category-rules/{rule_id}", response_model=CategoryRuleOut, dependencies=[Depends(require_admin)])
