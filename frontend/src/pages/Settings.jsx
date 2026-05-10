@@ -4,6 +4,7 @@ import client from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { listPersons, createPerson, updatePerson, deletePerson } from '../api/persons'
 import { listUsers, createUser, updateUser, resetPassword } from '../api/users'
+import { listCategories, createCategory, updateCategory } from '../api/categories'
 
 function Section({ title, children }) {
   return (
@@ -11,6 +12,55 @@ function Section({ title, children }) {
       <h2 className="text-sm font-semibold text-ink/60 uppercase tracking-wide">{title}</h2>
       {children}
     </div>
+  )
+}
+
+// ── Category form ─────────────────────────────────────────────────────────────
+
+function CategoryForm({ initial, onSave, onCancel }) {
+  const [name, setName] = useState(initial?.name ?? '')
+  const [color, setColor] = useState(initial?.color ?? '#C99828')
+  const [icon, setIcon] = useState(initial?.icon ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!name.trim()) return
+    setSaving(true)
+    setError('')
+    try {
+      await onSave({ name: name.trim(), color: color || null, icon: icon.trim() || null })
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Error al guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-wrap gap-3 items-end">
+      <div>
+        <label className="block text-xs text-ink/50 mb-1">Nombre</label>
+        <input type="text" className="input w-44" value={name} onChange={(e) => setName(e.target.value)}
+          placeholder="Nombre de categoría…" autoFocus required />
+      </div>
+      <div>
+        <label className="block text-xs text-ink/50 mb-1">Color</label>
+        <input type="color" className="h-9 w-12 rounded-lg border border-brown-600/40 cursor-pointer p-0.5 bg-white"
+          value={color} onChange={(e) => setColor(e.target.value)} />
+      </div>
+      <div>
+        <label className="block text-xs text-ink/50 mb-1">Ícono</label>
+        <input type="text" className="input w-16 text-center" value={icon}
+          onChange={(e) => setIcon(e.target.value)} placeholder="🍕" maxLength={4} />
+      </div>
+      {error && <p className="w-full text-xs text-red-500">{error}</p>}
+      <button type="submit" disabled={saving || !name.trim()} className="btn-primary text-sm">
+        {saving ? '…' : initial ? 'Guardar' : 'Crear'}
+      </button>
+      <button type="button" onClick={onCancel} className="btn-ghost text-sm">Cancelar</button>
+    </form>
   )
 }
 
@@ -302,6 +352,23 @@ export default function Settings() {
 
   const personMap = Object.fromEntries((persons || []).map((p) => [p.id, p]))
 
+  // ── Categories state ────────────────────────────────────────────────────────
+  const { data: categories } = useQuery({ queryKey: ['categories'], queryFn: listCategories })
+  const [showNewCat, setShowNewCat] = useState(false)
+  const [editCatId, setEditCatId] = useState(null)
+
+  const handleCreateCat = async (data) => {
+    await createCategory(data)
+    qc.invalidateQueries({ queryKey: ['categories'] })
+    setShowNewCat(false)
+  }
+
+  const handleUpdateCat = async (id, data) => {
+    await updateCategory(id, data)
+    qc.invalidateQueries({ queryKey: ['categories'] })
+    setEditCatId(null)
+  }
+
   return (
     <div className="space-y-5 max-w-2xl">
       <div>
@@ -337,6 +404,80 @@ export default function Settings() {
               {testResult.ok ? '✓' : '✕'} {testResult.message}
             </p>
           )}
+        </div>
+      </Section>
+
+      <Section title="Categorías">
+        {isAdmin && (
+          <div className="flex justify-end">
+            {!showNewCat && (
+              <button onClick={() => setShowNewCat(true)} className="btn-primary text-sm">
+                + Nueva categoría
+              </button>
+            )}
+          </div>
+        )}
+
+        {showNewCat && (
+          <div>
+            <CategoryForm onSave={handleCreateCat} onCancel={() => setShowNewCat(false)} />
+          </div>
+        )}
+
+        <div className="overflow-hidden rounded-lg border border-brown-600/15">
+          <table className="w-full">
+            <thead className="bg-[#F5EFE0]/60 border-b border-brown-600/15">
+              <tr>
+                <th className="table-header w-10 text-center">Color</th>
+                <th className="table-header">Nombre</th>
+                <th className="table-header w-16 text-center">Ícono</th>
+                <th className="table-header w-24">Estado</th>
+                {isAdmin && <th className="table-header w-20"></th>}
+              </tr>
+            </thead>
+            <tbody>
+              {!categories?.length && (
+                <tr>
+                  <td colSpan={isAdmin ? 5 : 4} className="table-cell text-center text-ink/40 py-8">
+                    Sin categorías.
+                  </td>
+                </tr>
+              )}
+              {categories?.map((cat) => (
+                <tr key={cat.id} className="table-row">
+                  <td className="table-cell">
+                    <div className="w-5 h-5 rounded-full mx-auto border border-brown-600/20"
+                      style={{ background: cat.color ?? '#C99828' }} />
+                  </td>
+                  <td className="table-cell">
+                    {editCatId === cat.id ? (
+                      <CategoryForm initial={cat}
+                        onSave={(data) => handleUpdateCat(cat.id, data)}
+                        onCancel={() => setEditCatId(null)} />
+                    ) : (
+                      <span className="font-medium text-ink text-sm">{cat.name}</span>
+                    )}
+                  </td>
+                  <td className="table-cell text-center text-lg">{cat.icon || '—'}</td>
+                  <td className="table-cell">
+                    {cat.is_system && (
+                      <span className="badge bg-brown-600/15 text-brown-900 text-[10px]">Sistema</span>
+                    )}
+                  </td>
+                  {isAdmin && (
+                    <td className="table-cell">
+                      {!cat.is_system && editCatId !== cat.id && (
+                        <button onClick={() => { setEditCatId(cat.id); setShowNewCat(false) }}
+                          className="text-xs text-ink/40 hover:text-amber-500 transition-colors">
+                          ✎ Editar
+                        </button>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </Section>
 

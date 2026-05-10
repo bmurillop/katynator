@@ -8,7 +8,6 @@ import Transactions from './pages/Transactions'
 import Accounts from './pages/Accounts'
 import Inbox from './pages/Inbox'
 import Entities from './pages/Entities'
-import Categories from './pages/Categories'
 import Settings from './pages/Settings'
 
 function ProtectedRoute({ children }) {
@@ -39,7 +38,7 @@ export default function App() {
         <Route path="cuentas" element={<Accounts />} />
         <Route path="bandeja" element={<Inbox />} />
         <Route path="entidades" element={<Entities />} />
-        <Route path="categorias" element={<Categories />} />
+        <Route path="categorias" element={<Navigate to="/configuracion" replace />} />
         <Route path="configuracion" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

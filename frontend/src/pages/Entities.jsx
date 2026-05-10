@@ -1,7 +1,10 @@
 import { useState, useDeferredValue } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { listEntities, getEntity, updateEntity, addPattern, deletePattern } from '../api/entities'
 import { listEntityRules, createEntityRule, updateEntityRule, deleteEntityRule, previewEntityRule, applyEntityRule, reapplyEntityRules } from '../api/entityRules'
+import { listUnresolved, resolveToExisting, createEntityFromUnresolved, ignoreUnresolved } from '../api/unresolvedEntities'
+import { suggestEntitiesAI } from '../api/transactions'
 import Pagination from '../components/Pagination'
 
 const typeLabel = {
@@ -15,7 +18,7 @@ const typeLabel = {
 
 const matchTypeLabel = { contains: 'Contiene', starts_with: 'Empieza con', exact: 'Exacto', regex: 'Regex' }
 
-const PAGE_SIZE = 50
+const PAGE_SIZE = 20
 
 // ── Entity detail modal ──────────────────────────────────────────────────────
 
@@ -223,8 +226,6 @@ function EntityRuleModal({ rule, entities, onClose, onSaved }) {
     }
   }
 
-  const entityMap = Object.fromEntries((entities?.items ?? []).map((e) => [e.id, e]))
-
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div className="bg-white border border-brown-600/20 rounded-xl w-full max-w-md shadow-2xl">
@@ -385,6 +386,180 @@ function EntitiesTab({ onSelect }) {
         </div>
         {data && <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage} />}
       </div>
+    </div>
+  )
+}
+
+// ── Unresolved entities tab ──────────────────────────────────────────────────
+
+function EntityResolutionCard({ item, onDone }) {
+  const [mode, setMode] = useState(null)
+  const [search, setSearch] = useState('')
+  const [entityId, setEntityId] = useState('')
+  const [newName, setNewName] = useState(item.raw_name)
+  const [newType, setNewType] = useState('merchant')
+  const [saving, setSaving] = useState(false)
+  const { data: entities, isFetching } = useQuery({
+    queryKey: ['entities-search', search],
+    queryFn: () => listEntities({ search: search || undefined, page_size: 30 }),
+    enabled: mode === 'link',
+  })
+
+  const handleLink = async () => {
+    if (!entityId) return
+    setSaving(true)
+    try { await resolveToExisting(item.id, entityId); onDone() } finally { setSaving(false) }
+  }
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return
+    setSaving(true)
+    try { await createEntityFromUnresolved(item.id, { canonical_name: newName, type: newType }); onDone() } finally { setSaving(false) }
+  }
+
+  const handleIgnore = async () => {
+    setSaving(true)
+    try { await ignoreUnresolved(item.id); onDone() } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="card space-y-3">
+      <div>
+        <p className="text-sm font-mono text-ink">{item.raw_name}</p>
+        <p className="text-xs text-ink/40 mt-0.5">Normalizado: {item.normalized}</p>
+        {item.suggestion_confidence != null && (
+          <p className="text-xs text-amber-500 mt-0.5">
+            Sugerencia: {(item.suggestion_confidence * 100).toFixed(0)}% de similitud
+          </p>
+        )}
+      </div>
+
+      {!mode && (
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => setMode('link')} className="btn-primary text-xs py-1.5 px-3">
+            ✓ Vincular a entidad existente
+          </button>
+          <button onClick={() => setMode('create')} className="btn-ghost text-xs border border-brown-600/30 py-1.5 px-3">
+            + Crear nueva entidad
+          </button>
+          <button onClick={handleIgnore} disabled={saving} className="btn-ghost text-xs text-ink/40 py-1.5 px-3">
+            ✕ Ignorar
+          </button>
+        </div>
+      )}
+
+      {mode === 'link' && (
+        <div className="space-y-2">
+          <input
+            type="text"
+            className="input text-sm"
+            placeholder="Buscar entidad…"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setEntityId('') }}
+            autoFocus
+          />
+          <select
+            className="select text-sm"
+            value={entityId}
+            onChange={(e) => setEntityId(e.target.value)}
+            size={Math.min((entities?.items?.length || 0) + 1, 6)}
+          >
+            <option value="">
+              {isFetching ? 'Buscando…' : entities?.items?.length ? '— Seleccionar —' : '— Sin resultados —'}
+            </option>
+            {entities?.items?.map((e) => (
+              <option key={e.id} value={e.id}>{e.canonical_name}</option>
+            ))}
+          </select>
+          <div className="flex gap-2">
+            <button onClick={handleLink} disabled={!entityId || saving} className="btn-primary text-xs">
+              {saving ? '…' : 'Vincular'}
+            </button>
+            <button onClick={() => { setMode(null); setSearch('') }} className="btn-ghost text-xs">Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {mode === 'create' && (
+        <div className="space-y-2">
+          <input type="text" className="input text-sm" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nombre canónico" />
+          <select className="select text-sm" value={newType} onChange={(e) => setNewType(e.target.value)}>
+            <option value="bank">Banco</option>
+            <option value="merchant">Comercio</option>
+            <option value="person">Persona</option>
+            <option value="issuer">Emisor</option>
+            <option value="income_source">Fuente de ingreso</option>
+            <option value="other">Otro</option>
+          </select>
+          <div className="flex gap-2">
+            <button onClick={handleCreate} disabled={!newName.trim() || saving} className="btn-primary text-xs">
+              {saving ? '…' : 'Crear entidad'}
+            </button>
+            <button onClick={() => setMode(null)} className="btn-ghost text-xs">Cancelar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function UnresolvedTab() {
+  const [page, setPage] = useState(1)
+  const [suggesting, setSuggesting] = useState(false)
+  const [suggestResult, setSuggestResult] = useState(null)
+  const qc = useQueryClient()
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['unresolved', 'pending', page],
+    queryFn: () => listUnresolved({ status: 'pending', page, page_size: PAGE_SIZE }),
+  })
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ['unresolved'] })
+    qc.invalidateQueries({ queryKey: ['inbox-badge-emails'] })
+  }
+
+  const handleSuggestAI = async () => {
+    setSuggesting(true)
+    setSuggestResult(null)
+    try {
+      const result = await suggestEntitiesAI()
+      setSuggestResult(result)
+      qc.invalidateQueries({ queryKey: ['unresolved'] })
+      qc.invalidateQueries({ queryKey: ['transactions-review'] })
+    } finally {
+      setSuggesting(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          {suggestResult && (
+            <p className="text-sm text-blue-600">◈ {suggestResult.suggested} entidades asignadas de {suggestResult.checked} sin entidad</p>
+          )}
+        </div>
+        <button
+          onClick={handleSuggestAI}
+          disabled={suggesting}
+          className="btn-ghost text-sm border border-blue-300 text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+        >
+          {suggesting ? 'Consultando IA…' : '◈ Sugerir con IA'}
+        </button>
+      </div>
+
+      {isLoading && <p className="text-ink/40 text-sm">Cargando…</p>}
+      {!isLoading && !data?.items?.length && (
+        <div className="card text-center py-12 text-ink/40">
+          <p className="text-4xl mb-3">✓</p>
+          <p>Sin nombres pendientes de resolver.</p>
+        </div>
+      )}
+      {data?.items?.map((item) => (
+        <EntityResolutionCard key={item.id} item={item} onDone={refresh} />
+      ))}
+      {data && <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage} />}
     </div>
   )
 }
@@ -555,18 +730,26 @@ function EntityRulesTab({ isAdmin }) {
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function Entities() {
-  const [tab, setTab] = useState('entidades')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = searchParams.get('tab') || 'entidades'
+  const setTab = (id) => setSearchParams({ tab: id })
   const [selectedId, setSelectedId] = useState(null)
 
   const { data: rules } = useQuery({ queryKey: ['entity-rules'], queryFn: listEntityRules })
+  const { data: unresolvedCount } = useQuery({
+    queryKey: ['unresolved-count'],
+    queryFn: () => listUnresolved({ status: 'pending', page: 1, page_size: 1 }),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+
+  const isAdmin = true
 
   const TABS = [
     { id: 'entidades', label: 'Entidades' },
+    { id: 'sin-resolver', label: `Sin resolver${unresolvedCount?.total ? ` (${unresolvedCount.total})` : ''}` },
     { id: 'reglas', label: `Reglas${rules ? ` (${rules.length})` : ''}` },
   ]
-
-  // isAdmin check — reuse auth context
-  const isAdmin = true // will be gated in sub-components via API 403s
 
   return (
     <div className="space-y-4 max-w-4xl">
@@ -594,6 +777,7 @@ export default function Entities() {
       </div>
 
       {tab === 'entidades' && <EntitiesTab onSelect={setSelectedId} />}
+      {tab === 'sin-resolver' && <UnresolvedTab />}
       {tab === 'reglas' && <EntityRulesTab isAdmin={isAdmin} />}
     </div>
   )

@@ -82,22 +82,19 @@ The pipeline resolves WHO first, then uses that result to drive the WHAT classif
 
 - Vite + React + Tailwind + Tremor scaffold
 - JWT auth flow with forced password change
-- **Dashboard**: stat cards (income/expense per currency), monthly bar charts, top-categories donut chart (current month, per currency), inbox attention cards
-- **Transactions**: full list with filters (person, account, currency, direction, category, date range, needs_review), inline category + transfer modal with rule creation, re-apply all rules button
-- **Accounts**: list with balance, currency, confirmation status
-- **Inbox** (3 tabs):
-  - *Entidades sin resolver*: resolution cards with link-to-existing or create-new flow
-  - *Transacciones por revisar*: expandable rows with inline category + entity editing; AI suggestion chip (violet IA badge) with one-click confirm; bulk "✦ Sugerir con IA" button
-  - *Correos fallidos*: error log with retry and manual poll trigger
-- **Entities**: list + detail modal with inline edit (name, display name, type)
-- **Entities** (2 tabs):
+- **Dashboard**: stat cards (income/expense per currency), monthly bar charts, top-categories donut chart (all-time, per currency)
+- **Transacciones** (3 tabs):
+  - *Transacciones*: full list with filters (account, currency, date range, needs_review), inline category + transfer modal with rule creation
+  - *Por revisar*: expandable rows with inline category + entity editing; AI suggestion chip (violet IA badge) with one-click confirm; bulk "✦ Sugerir categorías" and "◈ Sugerir entidades" AI buttons
+  - *Reglas*: category rules — create/edit (entity + memo pattern → category or transfer); reapply all; transfer rules (sets_transfer)
+- **Cuentas**: list with balance, currency, confirmation status
+- **Entidades** (3 tabs):
   - *Entidades*: list + detail modal (edit name, type; manage exact patterns)
-  - *Reglas*: entity rules — create/edit (pattern + match type → entity); re-apply all; "◈ Sugerir entidades" AI bulk button
-- **Categories** (2 tabs):
-  - *Categorías*: create + edit
-  - *Reglas*: create + **edit** (click row or ✎ button); transfer rules (sets_transfer); live match-count preview; apply single rule; reapply all
-- **Settings**: AI provider selector, IMAP config display
-- Sidebar inbox badge: live count of needs_review transactions + pending unresolved entities, refreshes every 60 s
+  - *Sin resolver*: resolution cards with link-to-existing or create-new flow; "◈ Sugerir con IA" AI bulk button
+  - *Reglas*: entity rules — create/edit (pattern + match type → entity); reapply all
+- **Bandeja**: failed emails only — error log with retry and manual IMAP poll trigger
+- **Configuración**: AI provider selector + connection test; Categories CRUD; Users management; Family members management
+- Sidebar badge: failed email count (red), refreshes every 60 s
 - `CurrencyAmount` component — every amount shows its currency symbol
 - `CurrencyBadge`, `Pagination` components
 
