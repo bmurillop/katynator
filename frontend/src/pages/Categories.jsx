@@ -5,7 +5,7 @@ import { listRules, createRule, deleteRule } from '../api/categoryRules'
 import { listEntities } from '../api/entities'
 import { useAuth } from '../context/AuthContext'
 
-const matchTypeLabel = { any: 'Cualquier', contains: 'Contiene', exact: 'Exacto', regex: 'Regex' }
+const matchTypeLabel = { any: 'Cualquier', contains: 'Contiene', starts_with: 'Empieza con', exact: 'Exacto', regex: 'Regex' }
 const sourceLabel = { user_confirmed: 'Manual', ai_suggested: 'IA' }
 
 // ── Category inline form ─────────────────────────────────────────────────────
@@ -141,6 +141,7 @@ function NewRuleModal({ categories, entities, onClose, onSaved }) {
             <div>
               <label className="block text-xs text-ink/50 mb-1">Tipo de match</label>
               <select className="select" value={matchType} onChange={(e) => setMatchType(e.target.value)}>
+                <option value="starts_with">Empieza con</option>
                 <option value="contains">Contiene</option>
                 <option value="exact">Exacto</option>
                 <option value="regex">Regex</option>
