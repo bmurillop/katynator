@@ -1,28 +1,47 @@
-import { useState, useCallback } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState, useDeferredValue } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { listTransactions, updateTransaction } from '../api/transactions'
 import { listCategories } from '../api/categories'
 import { listAccounts } from '../api/accounts'
-import { createRule } from '../api/categoryRules'
+import { createRule, previewRule } from '../api/categoryRules'
 import CurrencyAmount, { CurrencyBadge } from '../components/CurrencyAmount'
 import Pagination from '../components/Pagination'
 
 const PAGE_SIZE = 50
 
-// Extract most distinctive token for memo-rule suggestion
-function bestMemoToken(description) {
-  const stopwords = new Set(['de', 'del', 'la', 'el', 'en', 'a', 'y', 'e', 'con', 'por', 'para', 'the', 'and', 'of'])
-  const tokens = description.toLowerCase().replace(/[^a-záéíóúñ0-9\s]/gi, '').split(/\s+/)
-  const candidate = tokens.find((t) => t.length > 3 && !stopwords.has(t) && !/^\d+$/.test(t))
-  return candidate || null
+const MATCH_TYPE_LABELS = {
+  starts_with: 'Empieza con',
+  contains: 'Contiene',
+  exact: 'Exacto',
 }
 
 function CategoryModal({ txn, categories, onClose, onSaved }) {
-  const [categoryId, setCategoryId] = useState('')
-  const [scope, setScope] = useState('transaction')
-  const [memoToken, setMemoToken] = useState(bestMemoToken(txn.description_normalized) || '')
+  const [categoryId, setCategoryId] = useState(txn.category_id || '')
+  const [scope, setScope] = useState(txn.merchant_entity_id ? 'entity' : 'transaction')
+  const [limitToEntity, setLimitToEntity] = useState(!!txn.merchant_entity_id)
+  const [memoPattern, setMemoPattern] = useState(txn.description_normalized)
+  const [matchType, setMatchType] = useState('starts_with')
   const [saving, setSaving] = useState(false)
   const qc = useQueryClient()
+
+  const deferredPattern = useDeferredValue(memoPattern)
+  const deferredMatchType = useDeferredValue(matchType)
+
+  const showPatternControls = scope === 'pattern'
+  const previewParams = showPatternControls && deferredPattern
+    ? {
+        memo_pattern: deferredPattern,
+        match_type: deferredMatchType,
+        ...(limitToEntity && txn.merchant_entity_id ? { entity_id: txn.merchant_entity_id } : {}),
+      }
+    : null
+
+  const { data: previewData } = useQuery({
+    queryKey: ['rule-preview', previewParams],
+    queryFn: () => previewRule(previewParams),
+    enabled: !!previewParams,
+    staleTime: 2000,
+  })
 
   const handleSave = async () => {
     if (!categoryId) return
@@ -35,16 +54,20 @@ function CategoryModal({ txn, categories, onClose, onSaved }) {
       })
 
       if (scope !== 'transaction') {
-        const rulePayload = { category_id: categoryId, match_type: 'any', priority: 50, source: 'user_confirmed' }
+        const rulePayload = {
+          category_id: categoryId,
+          priority: 50,
+          source: 'user_confirmed',
+          match_type: 'any',
+        }
         if (scope === 'entity' && txn.merchant_entity_id) {
           rulePayload.entity_id = txn.merchant_entity_id
-        } else if (scope === 'entity_memo' && txn.merchant_entity_id && memoToken) {
-          rulePayload.entity_id = txn.merchant_entity_id
-          rulePayload.memo_pattern = memoToken
-          rulePayload.match_type = 'contains'
-        } else if (scope === 'memo' && memoToken) {
-          rulePayload.memo_pattern = memoToken
-          rulePayload.match_type = 'contains'
+        } else if (scope === 'pattern' && memoPattern.trim()) {
+          rulePayload.memo_pattern = memoPattern.trim()
+          rulePayload.match_type = matchType
+          if (limitToEntity && txn.merchant_entity_id) {
+            rulePayload.entity_id = txn.merchant_entity_id
+          }
         }
         if (rulePayload.entity_id || rulePayload.memo_pattern) {
           await createRule(rulePayload)
@@ -58,15 +81,24 @@ function CategoryModal({ txn, categories, onClose, onSaved }) {
     }
   }
 
+  const scopeOptions = [
+    { value: 'transaction', label: 'Solo esta transacción' },
+    ...(txn.merchant_entity_id
+      ? [{ value: 'entity', label: 'Todas las de esta entidad' }]
+      : []),
+    { value: 'pattern', label: 'Por patrón de descripción' },
+  ]
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white border border-brown-600/20 rounded-xl w-full max-w-md shadow-2xl">
+      <div className="bg-white border border-brown-600/20 rounded-xl w-full max-w-lg shadow-2xl">
         <div className="px-5 py-4 border-b border-brown-600/15">
           <h3 className="font-semibold text-ink">Categorizar transacción</h3>
-          <p className="text-xs text-ink/50 mt-0.5 truncate">{txn.description_raw}</p>
+          <p className="text-xs text-ink/50 mt-0.5 font-mono truncate">{txn.description_raw}</p>
         </div>
 
         <div className="px-5 py-4 space-y-4">
+          {/* Category */}
           <div>
             <label className="block text-xs font-medium text-ink/60 mb-1.5">Categoría</label>
             <select className="select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
@@ -77,26 +109,20 @@ function CategoryModal({ txn, categories, onClose, onSaved }) {
             </select>
           </div>
 
+          {/* Scope */}
           {categoryId && (
             <div>
-              <label className="block text-xs font-medium text-ink/60 mb-2">Aplicar esta categoría a:</label>
+              <label className="block text-xs font-medium text-ink/60 mb-2">Crear regla para:</label>
               <div className="space-y-2">
-                {[
-                  { value: 'transaction', label: 'Solo esta transacción' },
-                  ...(txn.merchant_entity_id ? [
-                    { value: 'entity', label: 'Todas las transacciones de esta entidad' },
-                    ...(memoToken ? [{ value: 'entity_memo', label: `Entidad + memo contiene "${memoToken}" (recomendado)` }] : []),
-                  ] : []),
-                  ...(memoToken ? [{ value: 'memo', label: `Memo contiene "${memoToken}"` }] : []),
-                ].map(({ value, label }) => (
-                  <label key={value} className="flex items-start gap-2 cursor-pointer">
+                {scopeOptions.map(({ value, label }) => (
+                  <label key={value} className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="radio"
                       name="scope"
                       value={value}
                       checked={scope === value}
                       onChange={() => setScope(value)}
-                      className="mt-0.5 accent-amber-500"
+                      className="accent-amber-500"
                     />
                     <span className="text-sm text-ink/80">{label}</span>
                   </label>
@@ -105,15 +131,53 @@ function CategoryModal({ txn, categories, onClose, onSaved }) {
             </div>
           )}
 
-          {(scope === 'entity_memo' || scope === 'memo') && (
-            <div>
-              <label className="block text-xs font-medium text-ink/60 mb-1.5">Patrón del memo</label>
-              <input
-                type="text"
-                className="input"
-                value={memoToken}
-                onChange={(e) => setMemoToken(e.target.value)}
-              />
+          {/* Pattern controls */}
+          {categoryId && showPatternControls && (
+            <div className="bg-[#F5EFE0] rounded-xl p-4 space-y-3">
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-ink/60 mb-1">Patrón</label>
+                  <input
+                    type="text"
+                    className="input text-sm font-mono"
+                    value={memoPattern}
+                    onChange={(e) => setMemoPattern(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink/60 mb-1">Tipo</label>
+                  <select
+                    className="select text-sm"
+                    value={matchType}
+                    onChange={(e) => setMatchType(e.target.value)}
+                  >
+                    {Object.entries(MATCH_TYPE_LABELS).map(([k, v]) => (
+                      <option key={k} value={k}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {txn.merchant_entity_id && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={limitToEntity}
+                    onChange={(e) => setLimitToEntity(e.target.checked)}
+                    className="accent-amber-500 w-4 h-4"
+                  />
+                  <span className="text-sm text-ink/70">Limitar a esta entidad</span>
+                </label>
+              )}
+
+              {previewData != null && (
+                <p className={`text-xs font-medium ${previewData.count > 0 ? 'text-green-700' : 'text-ink/40'}`}>
+                  {previewData.count > 0
+                    ? `Aplicaría a ${previewData.count} transacción${previewData.count !== 1 ? 'es' : ''} existente${previewData.count !== 1 ? 's' : ''}`
+                    : 'Sin coincidencias en transacciones existentes'}
+                </p>
+              )}
             </div>
           )}
         </div>

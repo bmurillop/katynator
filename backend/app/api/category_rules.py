@@ -1,18 +1,45 @@
 from __future__ import annotations
 
+from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import require_admin, require_member
 from app.db import get_db
 from app.models.category_rule import CategoryRule
+from app.models.transaction import Transaction
 from app.schemas.category_rule import CategoryRuleCreate, CategoryRuleOut, CategoryRuleUpdate
 from app.schemas.common import MessageResponse
 
 router = APIRouter()
+
+
+@router.get("/category-rules/preview", dependencies=[Depends(require_member)])
+async def preview_rule(
+    memo_pattern: Optional[str] = Query(None),
+    match_type: str = Query("contains"),
+    entity_id: Optional[UUID] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Count transactions that would be matched by a prospective rule."""
+    q = select(func.count()).select_from(Transaction)
+    if entity_id:
+        q = q.where(Transaction.merchant_entity_id == entity_id)
+    if memo_pattern:
+        p = memo_pattern.lower()
+        if match_type == "contains":
+            q = q.where(Transaction.description_normalized.ilike(f"%{p}%"))
+        elif match_type == "starts_with":
+            q = q.where(Transaction.description_normalized.ilike(f"{p}%"))
+        elif match_type == "exact":
+            q = q.where(Transaction.description_normalized == p)
+        elif match_type == "regex":
+            q = q.where(Transaction.description_normalized.op("~*")(memo_pattern))
+    count = (await db.execute(q)).scalar() or 0
+    return {"count": count}
 
 
 @router.get("/category-rules", response_model=list[CategoryRuleOut], dependencies=[Depends(require_member)])

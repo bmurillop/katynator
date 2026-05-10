@@ -46,6 +46,8 @@ def _memo_matches(rule: CategoryRule, description_normalized: str) -> bool:
             return True
         case MatchType.contains:
             return (rule.memo_pattern or "").lower() in description_normalized
+        case MatchType.starts_with:
+            return description_normalized.startswith((rule.memo_pattern or "").lower())
         case MatchType.exact:
             return (rule.memo_pattern or "").lower() == description_normalized
         case MatchType.regex:

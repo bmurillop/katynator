@@ -42,6 +42,7 @@ class TransactionDirection(str, enum.Enum):
 class MatchType(str, enum.Enum):
     any = "any"
     contains = "contains"
+    starts_with = "starts_with"
     exact = "exact"
     regex = "regex"
 
