@@ -543,6 +543,7 @@ function UnresolvedTab() {
         <button
           onClick={handleSuggestAI}
           disabled={suggesting}
+          title="Pide a la IA que asocie una entidad a las transacciones sin entidad resuelta"
           className="btn-ghost text-sm border border-blue-300 text-blue-600 hover:bg-blue-50 disabled:opacity-50"
         >
           {suggesting ? 'Consultando IA…' : '◈ Sugerir con IA'}
@@ -627,6 +628,7 @@ function EntityRulesTab({ isAdmin }) {
           <button
             onClick={handleReapply}
             disabled={reapplying}
+            title="Vuelve a correr todas las reglas de entidad sobre transacciones existentes"
             className="btn-ghost text-sm border border-brown-600/30 disabled:opacity-50"
           >
             {reapplying ? 'Aplicando…' : '↻ Re-aplicar reglas'}
@@ -746,9 +748,12 @@ export default function Entities() {
   const isAdmin = true
 
   const TABS = [
-    { id: 'entidades', label: 'Entidades' },
-    { id: 'sin-resolver', label: `Sin resolver${unresolvedCount?.total ? ` (${unresolvedCount.total})` : ''}` },
-    { id: 'reglas', label: `Reglas${rules ? ` (${rules.length})` : ''}` },
+    { id: 'entidades', label: 'Entidades',
+      desc: 'Catálogo de entidades conocidas: comercios, bancos, personas y fuentes de ingreso. Haz clic en una para ver sus patrones de reconocimiento.' },
+    { id: 'sin-resolver', label: `Sin resolver${unresolvedCount?.total ? ` (${unresolvedCount.total})` : ''}`,
+      desc: 'Nombres de remitente/destinatario que el sistema no pudo asociar a ninguna entidad. Resuélvelos para mejorar el reconocimiento futuro.' },
+    { id: 'reglas', label: `Reglas${rules ? ` (${rules.length})` : ''}`,
+      desc: 'Reglas de entidad que asignan automáticamente una entidad basándose en patrones del memo o la descripción de la transacción.' },
   ]
 
   return (
@@ -775,6 +780,10 @@ export default function Entities() {
           </button>
         ))}
       </div>
+
+      {TABS.find((t) => t.id === tab)?.desc && (
+        <p className="text-xs text-ink/50">{TABS.find((t) => t.id === tab).desc}</p>
+      )}
 
       {tab === 'entidades' && <EntitiesTab onSelect={setSelectedId} />}
       {tab === 'sin-resolver' && <UnresolvedTab />}

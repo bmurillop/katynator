@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, Fragment } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import client from '../api/client'
 import { useAuth } from '../context/AuthContext'
@@ -356,6 +356,7 @@ export default function Settings() {
   const { data: categories } = useQuery({ queryKey: ['categories'], queryFn: listCategories })
   const [showNewCat, setShowNewCat] = useState(false)
   const [editCatId, setEditCatId] = useState(null)
+  const [showSubFor, setShowSubFor] = useState(null) // parent_id of expanded subcategory form
 
   const handleCreateCat = async (data) => {
     await createCategory(data)
@@ -363,11 +364,26 @@ export default function Settings() {
     setShowNewCat(false)
   }
 
+  const handleCreateSub = async (parentId, data) => {
+    await createCategory({ ...data, parent_id: parentId })
+    qc.invalidateQueries({ queryKey: ['categories'] })
+    setShowSubFor(null)
+  }
+
   const handleUpdateCat = async (id, data) => {
     await updateCategory(id, data)
     qc.invalidateQueries({ queryKey: ['categories'] })
     setEditCatId(null)
   }
+
+  const catParents = (categories || []).filter((c) => !c.parent_id)
+  const catChildMap = {}
+  ;(categories || []).forEach((c) => {
+    if (c.parent_id) {
+      if (!catChildMap[c.parent_id]) catChildMap[c.parent_id] = []
+      catChildMap[c.parent_id].push(c)
+    }
+  })
 
   return (
     <div className="space-y-5 max-w-2xl">
@@ -408,18 +424,21 @@ export default function Settings() {
       </Section>
 
       <Section title="Categorías">
-        {isAdmin && (
+        <p className="text-xs text-ink/50 -mt-2">
+          Organiza tus gastos en categorías. Agrega subcategorías para mayor detalle — los reportes muestran siempre el total por categoría principal.
+        </p>
+
+        {isAdmin && !showNewCat && (
           <div className="flex justify-end">
-            {!showNewCat && (
-              <button onClick={() => setShowNewCat(true)} className="btn-primary text-sm">
-                + Nueva categoría
-              </button>
-            )}
+            <button onClick={() => { setShowNewCat(true); setShowSubFor(null) }} className="btn-primary text-sm">
+              + Nueva categoría
+            </button>
           </div>
         )}
 
         {showNewCat && (
-          <div>
+          <div className="bg-[#F5EFE0] rounded-xl p-4">
+            <p className="text-xs font-semibold text-ink/50 uppercase tracking-wide mb-3">Nueva categoría</p>
             <CategoryForm onSave={handleCreateCat} onCancel={() => setShowNewCat(false)} />
           </div>
         )}
@@ -431,51 +450,112 @@ export default function Settings() {
                 <th className="table-header w-10 text-center">Color</th>
                 <th className="table-header">Nombre</th>
                 <th className="table-header w-16 text-center">Ícono</th>
-                <th className="table-header w-24">Estado</th>
-                {isAdmin && <th className="table-header w-20"></th>}
+                {isAdmin && <th className="table-header w-48"></th>}
               </tr>
             </thead>
             <tbody>
-              {!categories?.length && (
+              {!catParents.length && (
                 <tr>
-                  <td colSpan={isAdmin ? 5 : 4} className="table-cell text-center text-ink/40 py-8">
+                  <td colSpan={isAdmin ? 4 : 3} className="table-cell text-center text-ink/40 py-8">
                     Sin categorías.
                   </td>
                 </tr>
               )}
-              {categories?.map((cat) => (
-                <tr key={cat.id} className="table-row">
-                  <td className="table-cell">
-                    <div className="w-5 h-5 rounded-full mx-auto border border-brown-600/20"
-                      style={{ background: cat.color ?? '#C99828' }} />
-                  </td>
-                  <td className="table-cell">
-                    {editCatId === cat.id ? (
-                      <CategoryForm initial={cat}
-                        onSave={(data) => handleUpdateCat(cat.id, data)}
-                        onCancel={() => setEditCatId(null)} />
-                    ) : (
-                      <span className="font-medium text-ink text-sm">{cat.name}</span>
-                    )}
-                  </td>
-                  <td className="table-cell text-center text-lg">{cat.icon || '—'}</td>
-                  <td className="table-cell">
-                    {cat.is_system && (
-                      <span className="badge bg-brown-600/15 text-brown-900 text-[10px]">Sistema</span>
-                    )}
-                  </td>
-                  {isAdmin && (
-                    <td className="table-cell">
-                      {!cat.is_system && editCatId !== cat.id && (
-                        <button onClick={() => { setEditCatId(cat.id); setShowNewCat(false) }}
-                          className="text-xs text-ink/40 hover:text-amber-500 transition-colors">
-                          ✎ Editar
-                        </button>
+              {catParents.map((cat) => {
+                const children = (catChildMap[cat.id] || []).sort((a, b) => a.name.localeCompare(b.name, 'es'))
+                return (
+                  <Fragment key={cat.id}>
+                    {/* ── Parent row ── */}
+                    <tr className="table-row border-b-0">
+                      <td className="table-cell">
+                        <div className="w-5 h-5 rounded-full mx-auto border border-brown-600/20"
+                          style={{ background: cat.color ?? '#C99828' }} />
+                      </td>
+                      <td className="table-cell">
+                        {editCatId === cat.id ? (
+                          <CategoryForm initial={cat}
+                            onSave={(data) => handleUpdateCat(cat.id, data)}
+                            onCancel={() => setEditCatId(null)} />
+                        ) : (
+                          <span className="font-semibold text-ink text-sm">{cat.name}</span>
+                        )}
+                      </td>
+                      <td className="table-cell text-center text-lg">{cat.icon || '—'}</td>
+                      {isAdmin && (
+                        <td className="table-cell">
+                          <div className="flex gap-3 justify-end text-xs">
+                            {!cat.is_system && editCatId !== cat.id && (
+                              <button
+                                onClick={() => { setEditCatId(cat.id); setShowNewCat(false); setShowSubFor(null) }}
+                                className="text-ink/30 hover:text-amber-500 transition-colors"
+                                title="Editar nombre, color o ícono"
+                              >✎ Editar</button>
+                            )}
+                            {editCatId !== cat.id && (
+                              <button
+                                onClick={() => { setShowSubFor(showSubFor === cat.id ? null : cat.id); setShowNewCat(false); setEditCatId(null) }}
+                                className="text-ink/30 hover:text-amber-500 transition-colors"
+                                title="Agregar subcategoría a este grupo"
+                              >+ Sub</button>
+                            )}
+                          </div>
+                        </td>
                       )}
-                    </td>
-                  )}
-                </tr>
-              ))}
+                    </tr>
+
+                    {/* ── Add subcategory inline form ── */}
+                    {showSubFor === cat.id && (
+                      <tr>
+                        <td colSpan={isAdmin ? 4 : 3} className="px-4 py-3 bg-[#F5EFE0]/60 border-b border-brown-600/10">
+                          <p className="text-xs font-semibold text-ink/50 uppercase tracking-wide mb-2">
+                            Nueva subcategoría de {cat.name}
+                          </p>
+                          <CategoryForm
+                            onSave={(data) => handleCreateSub(cat.id, data)}
+                            onCancel={() => setShowSubFor(null)}
+                          />
+                        </td>
+                      </tr>
+                    )}
+
+                    {/* ── Child rows ── */}
+                    {children.map((child) => (
+                      <tr key={child.id} className="table-row bg-[#F5EFE0]/20">
+                        <td className="table-cell pl-8">
+                          <div className="w-3.5 h-3.5 rounded-full mx-auto border border-brown-600/20"
+                            style={{ background: child.color ?? cat.color ?? '#C99828' }} />
+                        </td>
+                        <td className="table-cell pl-6">
+                          <div className="flex items-center gap-2">
+                            <span className="text-ink/30 text-xs">└</span>
+                            {editCatId === child.id ? (
+                              <CategoryForm initial={child}
+                                onSave={(data) => handleUpdateCat(child.id, data)}
+                                onCancel={() => setEditCatId(null)} />
+                            ) : (
+                              <span className="text-sm text-ink/80">{child.name}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="table-cell text-center text-base">{child.icon || '—'}</td>
+                        {isAdmin && (
+                          <td className="table-cell">
+                            {!child.is_system && editCatId !== child.id && (
+                              <div className="flex justify-end">
+                                <button
+                                  onClick={() => { setEditCatId(child.id); setShowSubFor(null) }}
+                                  className="text-xs text-ink/30 hover:text-amber-500 transition-colors"
+                                  title="Editar subcategoría"
+                                >✎ Editar</button>
+                              </div>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>

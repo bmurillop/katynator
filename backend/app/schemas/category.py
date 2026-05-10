@@ -12,6 +12,7 @@ class CategoryOut(BaseModel):
     color: Optional[str]
     icon: Optional[str]
     is_system: bool
+    parent_id: Optional[UUID] = None
 
     model_config = {"from_attributes": True}
 
@@ -20,6 +21,7 @@ class CategoryCreate(BaseModel):
     name: str
     color: Optional[str] = None
     icon: Optional[str] = None
+    parent_id: Optional[UUID] = None
 
 
 class CategoryUpdate(BaseModel):

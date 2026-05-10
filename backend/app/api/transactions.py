@@ -11,6 +11,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 import logging
 
@@ -152,26 +153,28 @@ async def transaction_summary_by_category(
     date_to: date | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Debit totals grouped by category — used for the spending breakdown chart."""
+    """Debit totals grouped by top-level category (rolls up subcategories to parent)."""
+    parent_cat = aliased(Category)
     q = (
         select(
-            Transaction.category_id,
-            Category.name.label("category_name"),
-            Category.color.label("category_color"),
+            func.coalesce(parent_cat.id, Category.id).label("category_id"),
+            func.coalesce(parent_cat.name, Category.name).label("category_name"),
+            func.coalesce(parent_cat.color, Category.color).label("category_color"),
             Transaction.currency,
             func.sum(Transaction.amount).label("total"),
             func.count(Transaction.id).label("count"),
         )
         .join(Category, Transaction.category_id == Category.id)
+        .outerjoin(parent_cat, Category.parent_id == parent_cat.id)
         .where(
             Transaction.direction == TransactionDirection.debit,
             Transaction.is_transfer.is_(False),
             Transaction.category_id.isnot(None),
         )
         .group_by(
-            Transaction.category_id,
-            Category.name,
-            Category.color,
+            func.coalesce(parent_cat.id, Category.id),
+            func.coalesce(parent_cat.name, Category.name),
+            func.coalesce(parent_cat.color, Category.color),
             Transaction.currency,
         )
         .order_by(func.sum(Transaction.amount).desc())

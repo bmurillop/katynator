@@ -5,9 +5,10 @@ import { listTransactions, updateTransaction, suggestCategoriesAI, suggestEntiti
 import { listCategories } from '../api/categories'
 import { listAccounts } from '../api/accounts'
 import { listRules, createRule, updateRule, deleteRule, previewRule, applyRule, reapplyRules } from '../api/categoryRules'
-import { listEntities } from '../api/entities'
+import { listEntities, createEntity } from '../api/entities'
 import { useAuth } from '../context/AuthContext'
 import CurrencyAmount, { CurrencyBadge } from '../components/CurrencyAmount'
+import CategoryPicker from '../components/CategoryPicker'
 import Pagination from '../components/Pagination'
 
 const PAGE_SIZE = 50
@@ -145,12 +146,12 @@ function CategoryModal({ txn, categories, onClose, onSaved }) {
           {mode === 'categorize' && (
             <div>
               <label className="block text-xs font-medium text-ink/60 mb-1.5">Categoría</label>
-              <select className="select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-                <option value="">— Seleccionar —</option>
-                {categories?.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+              <CategoryPicker
+                categories={categories}
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+                placeholder="— Seleccionar —"
+              />
             </div>
           )}
 
@@ -278,12 +279,12 @@ function RuleFields({ entityId, setEntityId, memoPattern, setMemoPattern, matchT
               ⇌ Transferencia interna
             </div>
           ) : (
-            <select className="select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">— Seleccionar —</option>
-              {categories?.map((c) => (
-                <option key={c.id} value={c.id}>{c.icon ? `${c.icon} ` : ''}{c.name}</option>
-              ))}
-            </select>
+            <CategoryPicker
+              categories={categories || []}
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+              placeholder="— Seleccionar —"
+            />
           )}
         </div>
         <div>
@@ -599,6 +600,10 @@ function ReviewTab() {
   const [suggestResult, setSuggestResult] = useState(null)
   const [suggestingEntities, setSuggestingEntities] = useState(false)
   const [suggestEntitiesResult, setSuggestEntitiesResult] = useState(null)
+  const [showNewEntityFor, setShowNewEntityFor] = useState(null)
+  const [newEntityName, setNewEntityName] = useState('')
+  const [newEntityType, setNewEntityType] = useState('merchant')
+  const [creatingEntity, setCreatingEntity] = useState(false)
   const qc = useQueryClient()
 
   const { data: txns, isLoading } = useQuery({
@@ -669,6 +674,21 @@ function ReviewTab() {
     }
   }
 
+  const handleCreateEntity = async (txnId) => {
+    if (!newEntityName.trim()) return
+    setCreatingEntity(true)
+    try {
+      const entity = await createEntity({ canonical_name: newEntityName.trim(), entity_type: newEntityType })
+      qc.invalidateQueries({ queryKey: ['entities-all-review'] })
+      setEdit(txnId, 'merchant_entity_id', entity.id)
+      setShowNewEntityFor(null)
+      setNewEntityName('')
+      setNewEntityType('merchant')
+    } finally {
+      setCreatingEntity(false)
+    }
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -684,6 +704,7 @@ function ReviewTab() {
           <button
             onClick={handleSuggestEntities}
             disabled={suggestingEntities}
+            title="Pide a la IA que asocie una entidad a todas las transacciones que aún no tienen ninguna"
             className="btn-ghost text-sm border border-blue-300 text-blue-600 hover:bg-blue-50 disabled:opacity-50"
           >
             {suggestingEntities ? 'Consultando IA…' : '◈ Sugerir entidades'}
@@ -691,6 +712,7 @@ function ReviewTab() {
           <button
             onClick={handleSuggestAI}
             disabled={suggesting}
+            title="Pide a la IA que asigne una categoría a todas las transacciones sin categoría"
             className="btn-ghost text-sm border border-violet-300 text-violet-600 hover:bg-violet-50 disabled:opacity-50"
           >
             {suggesting ? 'Consultando IA…' : '✦ Sugerir categorías'}
@@ -760,32 +782,64 @@ function ReviewTab() {
                     <tr>
                       <td colSpan={6} className="bg-[#F5EFE0]/70 px-4 py-3 border-b border-brown-600/10">
                         <div className="flex flex-wrap gap-4 items-end">
-                          <div className="flex-1 min-w-44">
+                          <div className="flex-1 min-w-44" onClick={(e) => e.stopPropagation()}>
                             <label className="block text-xs font-medium text-ink/60 mb-1">Categoría</label>
-                            <select className="select text-sm" value={currentCatId || ''}
+                            <CategoryPicker
+                              categories={categories || []}
+                              value={currentCatId || ''}
                               onChange={(e) => setEdit(txn.id, 'category_id', e.target.value || null)}
-                              onClick={(e) => e.stopPropagation()}>
-                              <option value="">— Sin categoría —</option>
-                              {(categories || []).map((c) => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                              ))}
-                            </select>
+                              className="select text-sm"
+                            />
                           </div>
 
-                          <div className="flex-1 min-w-52">
+                          <div className="flex-1 min-w-52" onClick={(e) => e.stopPropagation()}>
                             <label className="block text-xs font-medium text-ink/60 mb-1">Entidad</label>
                             <input type="text" className="input text-sm mb-1" placeholder="Buscar entidad…"
                               value={entitySearch} onChange={(e) => setEntitySearch(e.target.value)}
-                              onClick={(e) => e.stopPropagation()} autoFocus />
+                              autoFocus />
                             <select className="select text-sm" value={currentEntityId || ''}
                               onChange={(e) => setEdit(txn.id, 'merchant_entity_id', e.target.value || null)}
-                              onClick={(e) => e.stopPropagation()}
                               size={Math.min(filteredEntities.length + 1, 5)}>
                               <option value="">— Sin entidad —</option>
                               {filteredEntities.map((e) => (
                                 <option key={e.id} value={e.id}>{e.display_name || e.canonical_name}</option>
                               ))}
                             </select>
+                            <button
+                              onClick={() => { setShowNewEntityFor(showNewEntityFor === txn.id ? null : txn.id); setNewEntityName('') }}
+                              className="text-xs text-amber-500 hover:underline mt-1.5 block"
+                              title="Crear una entidad nueva y asignarla a esta transacción"
+                            >
+                              {showNewEntityFor === txn.id ? '× Cancelar' : '+ Crear entidad nueva'}
+                            </button>
+                            {showNewEntityFor === txn.id && (
+                              <div className="mt-2 flex gap-2 items-end bg-amber-500/5 border border-amber-500/20 rounded-lg p-2">
+                                <div className="flex-1">
+                                  <label className="block text-xs text-ink/50 mb-1">Nombre</label>
+                                  <input type="text" className="input text-xs" placeholder="Ej: Walmart"
+                                    value={newEntityName} onChange={(e) => setNewEntityName(e.target.value)} autoFocus />
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-ink/50 mb-1">Tipo</label>
+                                  <select className="select text-xs" value={newEntityType} onChange={(e) => setNewEntityType(e.target.value)}>
+                                    <option value="merchant">Comercio</option>
+                                    <option value="person">Persona</option>
+                                    <option value="bank">Banco</option>
+                                    <option value="issuer">Emisor</option>
+                                    <option value="income_source">Ingreso</option>
+                                    <option value="other">Otro</option>
+                                  </select>
+                                </div>
+                                <button
+                                  onClick={() => handleCreateEntity(txn.id)}
+                                  disabled={!newEntityName.trim() || creatingEntity}
+                                  className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50"
+                                  title="Guardar nueva entidad"
+                                >
+                                  {creatingEntity ? '…' : 'Crear'}
+                                </button>
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex flex-col gap-1.5 shrink-0 pb-0.5">
@@ -886,6 +940,7 @@ function CategoryRulesTab({ isAdmin }) {
         </div>
         <div className="flex gap-2">
           <button onClick={handleReapply} disabled={reapplying}
+            title="Vuelve a correr todas las reglas activas sobre las transacciones existentes"
             className="btn-ghost text-sm border border-brown-600/30 disabled:opacity-50">
             {reapplying ? 'Aplicando…' : '↻ Re-aplicar reglas'}
           </button>
@@ -1016,9 +1071,12 @@ export default function Transactions() {
   })
 
   const TABS = [
-    { id: 'transacciones', label: 'Transacciones' },
-    { id: 'revision', label: `Por revisar${reviewCount?.total ? ` (${reviewCount.total})` : ''}` },
-    { id: 'reglas', label: `Reglas${rules ? ` (${rules.length})` : ''}` },
+    { id: 'transacciones', label: 'Transacciones',
+      desc: 'Historial completo de movimientos importados. Filtra por moneda, cuenta o fecha, y clasifica cualquier transacción desde aquí.' },
+    { id: 'revision', label: `Por revisar${reviewCount?.total ? ` (${reviewCount.total})` : ''}`,
+      desc: 'Transacciones que aún no tienen categoría o entidad confirmada, o que fueron marcadas para revisión manual.' },
+    { id: 'reglas', label: `Reglas de categoría${rules ? ` (${rules.length})` : ''}`,
+      desc: 'Reglas automáticas que asignan categoría o marcan transferencias según entidad o patrón de descripción.' },
   ]
 
   return (
@@ -1043,6 +1101,10 @@ export default function Transactions() {
           </button>
         ))}
       </div>
+
+      {TABS.find((t) => t.id === activeTab)?.desc && (
+        <p className="text-xs text-ink/50">{TABS.find((t) => t.id === activeTab).desc}</p>
+      )}
 
       {activeTab === 'transacciones' && <TransactionListTab />}
       {activeTab === 'revision' && <ReviewTab />}
