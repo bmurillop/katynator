@@ -4,7 +4,7 @@ import client from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { listPersons, createPerson, updatePerson, deletePerson } from '../api/persons'
 import { listUsers, createUser, updateUser, resetPassword } from '../api/users'
-import { listCategories, createCategory, updateCategory } from '../api/categories'
+import { listCategories, createCategory, updateCategory, deleteCategory } from '../api/categories'
 
 function Section({ title, children }) {
   return (
@@ -356,7 +356,8 @@ export default function Settings() {
   const { data: categories } = useQuery({ queryKey: ['categories'], queryFn: listCategories })
   const [showNewCat, setShowNewCat] = useState(false)
   const [editCatId, setEditCatId] = useState(null)
-  const [showSubFor, setShowSubFor] = useState(null) // parent_id of expanded subcategory form
+  const [showSubFor, setShowSubFor] = useState(null)
+  const [confirmDeleteCat, setConfirmDeleteCat] = useState(null) // { cat, childCount }
 
   const handleCreateCat = async (data) => {
     await createCategory(data)
@@ -384,6 +385,20 @@ export default function Settings() {
       catChildMap[c.parent_id].push(c)
     }
   })
+
+  const handleDeleteCat = (cat) => {
+    const childCount = (catChildMap[cat.id] || []).length
+    setConfirmDeleteCat({ cat, childCount })
+  }
+
+  const confirmAndDelete = async () => {
+    if (!confirmDeleteCat) return
+    await deleteCategory(confirmDeleteCat.cat.id)
+    qc.invalidateQueries({ queryKey: ['categories'] })
+    qc.invalidateQueries({ queryKey: ['transactions'] })
+    qc.invalidateQueries({ queryKey: ['transactions-review'] })
+    setConfirmDeleteCat(null)
+  }
 
   return (
     <div className="space-y-5 max-w-2xl">
@@ -484,19 +499,24 @@ export default function Settings() {
                       {isAdmin && (
                         <td className="table-cell">
                           <div className="flex gap-3 justify-end text-xs">
-                            {!cat.is_system && editCatId !== cat.id && (
-                              <button
-                                onClick={() => { setEditCatId(cat.id); setShowNewCat(false); setShowSubFor(null) }}
-                                className="text-ink/30 hover:text-amber-500 transition-colors"
-                                title="Editar nombre, color o ícono"
-                              >✎ Editar</button>
-                            )}
                             {editCatId !== cat.id && (
-                              <button
-                                onClick={() => { setShowSubFor(showSubFor === cat.id ? null : cat.id); setShowNewCat(false); setEditCatId(null) }}
-                                className="text-ink/30 hover:text-amber-500 transition-colors"
-                                title="Agregar subcategoría a este grupo"
-                              >+ Sub</button>
+                              <>
+                                <button
+                                  onClick={() => { setEditCatId(cat.id); setShowNewCat(false); setShowSubFor(null) }}
+                                  className="text-ink/30 hover:text-amber-500 transition-colors"
+                                  title="Editar nombre, color o ícono"
+                                >✎ Editar</button>
+                                <button
+                                  onClick={() => { setShowSubFor(showSubFor === cat.id ? null : cat.id); setShowNewCat(false); setEditCatId(null) }}
+                                  className="text-ink/30 hover:text-amber-500 transition-colors"
+                                  title="Agregar subcategoría a este grupo"
+                                >+ Sub</button>
+                                <button
+                                  onClick={() => handleDeleteCat(cat)}
+                                  className="text-ink/20 hover:text-red-500 transition-colors"
+                                  title="Eliminar categoría"
+                                >✕</button>
+                              </>
                             )}
                           </div>
                         </td>
@@ -540,13 +560,18 @@ export default function Settings() {
                         <td className="table-cell text-center text-base">{child.icon || '—'}</td>
                         {isAdmin && (
                           <td className="table-cell">
-                            {!child.is_system && editCatId !== child.id && (
-                              <div className="flex justify-end">
+                            {editCatId !== child.id && (
+                              <div className="flex gap-3 justify-end text-xs">
                                 <button
                                   onClick={() => { setEditCatId(child.id); setShowSubFor(null) }}
-                                  className="text-xs text-ink/30 hover:text-amber-500 transition-colors"
+                                  className="text-ink/30 hover:text-amber-500 transition-colors"
                                   title="Editar subcategoría"
                                 >✎ Editar</button>
+                                <button
+                                  onClick={() => handleDeleteCat(child)}
+                                  className="text-ink/20 hover:text-red-500 transition-colors"
+                                  title="Eliminar subcategoría"
+                                >✕</button>
                               </div>
                             )}
                           </td>
@@ -697,6 +722,34 @@ export default function Settings() {
       )}
       {userModal?.mode === 'reset' && (
         <ResetPasswordModal targetUser={userModal.user} onClose={() => setUserModal(null)} onSaved={refreshUsers} />
+      )}
+
+      {confirmDeleteCat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h2 className="text-base font-semibold text-ink">
+              ¿Eliminar «{confirmDeleteCat.cat.name}»?
+            </h2>
+            <div className="text-sm text-ink/60 space-y-2">
+              <p>
+                Las transacciones asignadas a esta categoría quedarán sin categoría.
+              </p>
+              {confirmDeleteCat.childCount > 0 && (
+                <p className="text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                  También se eliminarán sus {confirmDeleteCat.childCount} subcategoría{confirmDeleteCat.childCount !== 1 ? 's' : ''} y todas las transacciones asignadas a ellas quedarán sin categoría.
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button onClick={confirmAndDelete} className="btn-primary text-sm flex-1 bg-red-500 border-red-500 hover:bg-red-600">
+                Sí, eliminar
+              </button>
+              <button onClick={() => setConfirmDeleteCat(null)} className="btn-ghost text-sm flex-1 border border-brown-600/30">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {deleteConflict && (

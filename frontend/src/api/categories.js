@@ -7,3 +7,6 @@ export const createCategory = (data) =>
 
 export const updateCategory = (id, data) =>
   client.patch(`/categories/${id}`, data).then((r) => r.data)
+
+export const deleteCategory = (id) =>
+  client.delete(`/categories/${id}`)

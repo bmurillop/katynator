@@ -3,7 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import require_admin, require_member
@@ -84,11 +84,28 @@ async def update_category(
     row = (await db.execute(select(Category).where(Category.id == category_id))).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Categoría no encontrada")
-    if row.is_system:
-        raise HTTPException(status_code=403, detail="Las categorías del sistema no se pueden modificar")
 
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(row, field, value)
 
     await db.commit()
     return CategoryOut.model_validate(row)
+
+
+@router.delete("/categories/{category_id}", status_code=204, dependencies=[Depends(require_admin)])
+async def delete_category(category_id: UUID, db: AsyncSession = Depends(get_db)):
+    row = (await db.execute(select(Category).where(Category.id == category_id))).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Categoría no encontrada")
+
+    # Collect children IDs so we can null transaction references before cascade delete
+    child_ids = (await db.execute(
+        select(Category.id).where(Category.parent_id == category_id)
+    )).scalars().all()
+    all_ids = [category_id, *child_ids]
+
+    await db.execute(
+        update(Transaction).where(Transaction.category_id.in_(all_ids)).values(category_id=None, category_source=None)
+    )
+    await db.execute(delete(Category).where(Category.id == category_id))
+    await db.commit()
