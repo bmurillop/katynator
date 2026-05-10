@@ -32,6 +32,7 @@ class TransactionOut(BaseModel):
 class TransactionUpdate(BaseModel):
     category_id: Optional[UUID] = None
     category_source: Optional[CategorySource] = None
+    merchant_entity_id: Optional[UUID] = None
     needs_review: Optional[bool] = None
 
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, Fragment } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { listUnresolved, resolveToExisting, createEntityFromUnresolved, ignoreUnresolved } from '../api/unresolvedEntities'
@@ -6,7 +6,7 @@ import { listTransactions, updateTransaction } from '../api/transactions'
 import { listEmails, retryEmail, triggerPoll } from '../api/emails'
 import { listEntities } from '../api/entities'
 import { listCategories } from '../api/categories'
-import CurrencyAmount, { CurrencyBadge } from '../components/CurrencyAmount'
+import CurrencyAmount from '../components/CurrencyAmount'
 import Pagination from '../components/Pagination'
 
 const PAGE_SIZE = 20
@@ -156,16 +156,51 @@ function UnresolvedTab() {
 
 function ReviewTab() {
   const [page, setPage] = useState(1)
+  const [expanded, setExpanded] = useState(null)
+  const [entitySearch, setEntitySearch] = useState('')
+  const [edits, setEdits] = useState({})
   const qc = useQueryClient()
+
   const { data: txns, isLoading } = useQuery({
     queryKey: ['transactions-review', page],
     queryFn: () => listTransactions({ needs_review: true, page, page_size: PAGE_SIZE }),
   })
   const { data: categories } = useQuery({ queryKey: ['categories'], queryFn: listCategories })
-  const catMap = Object.fromEntries((categories || []).map((c) => [c.id, c]))
+  const { data: allEntities } = useQuery({
+    queryKey: ['entities-all-review'],
+    queryFn: () => listEntities({ page_size: 200 }),
+  })
 
-  const dismiss = async (id) => {
-    await updateTransaction(id, { needs_review: false })
+  const catMap = Object.fromEntries((categories || []).map((c) => [c.id, c]))
+  const entityList = allEntities?.items || []
+  const filteredEntities = entitySearch
+    ? entityList.filter((e) =>
+        (e.display_name || e.canonical_name).toLowerCase().includes(entitySearch.toLowerCase())
+      )
+    : entityList
+
+  const setEdit = (id, field, value) =>
+    setEdits((prev) => ({ ...prev, [id]: { ...prev[id], [field]: value } }))
+
+  const toggle = (id) => {
+    setExpanded((prev) => (prev === id ? null : id))
+    setEntitySearch('')
+  }
+
+  const save = async (txn) => {
+    const edit = edits[txn.id] || {}
+    const patch = { needs_review: false }
+    if ('category_id' in edit) patch.category_id = edit.category_id || null
+    if ('merchant_entity_id' in edit) patch.merchant_entity_id = edit.merchant_entity_id || null
+    await updateTransaction(txn.id, patch)
+    setEdits((prev) => { const n = { ...prev }; delete n[txn.id]; return n })
+    setExpanded(null)
+    qc.invalidateQueries({ queryKey: ['transactions-review'] })
+  }
+
+  const dismiss = async (txn) => {
+    await updateTransaction(txn.id, { needs_review: false })
+    setExpanded(null)
     qc.invalidateQueries({ queryKey: ['transactions-review'] })
   }
 
@@ -176,10 +211,10 @@ function ReviewTab() {
           <tr>
             <th className="table-header">Fecha</th>
             <th className="table-header">Descripción</th>
+            <th className="table-header">Entidad</th>
             <th className="table-header text-right">Monto</th>
-            <th className="table-header">Moneda</th>
             <th className="table-header">Categoría</th>
-            <th className="table-header"></th>
+            <th className="table-header w-6"></th>
           </tr>
         </thead>
         <tbody>
@@ -189,24 +224,108 @@ function ReviewTab() {
               <p className="text-4xl mb-2">✓</p>Sin transacciones pendientes de revisión.
             </td></tr>
           )}
-          {txns?.items?.map((txn) => (
-            <tr key={txn.id} className="table-row">
-              <td className="table-cell text-xs text-ink/50 whitespace-nowrap">
-                {new Date(txn.date + 'T12:00:00').toLocaleDateString('es-CR')}
-              </td>
-              <td className="table-cell max-w-xs"><p className="truncate">{txn.description_raw}</p></td>
-              <td className="table-cell text-right">
-                <CurrencyAmount amount={txn.amount} currency={txn.currency} direction={txn.direction} />
-              </td>
-              <td className="table-cell"><CurrencyBadge currency={txn.currency} /></td>
-              <td className="table-cell text-ink/50 text-xs">
-                {txn.category_id ? catMap[txn.category_id]?.name : <span className="text-amber-500">Sin categoría</span>}
-              </td>
-              <td className="table-cell">
-                <button onClick={() => dismiss(txn.id)} className="text-xs text-ink/30 hover:text-green-600">✓</button>
-              </td>
-            </tr>
-          ))}
+          {txns?.items?.map((txn) => {
+            const isOpen = expanded === txn.id
+            const edit = edits[txn.id] || {}
+            const currentCatId = 'category_id' in edit ? edit.category_id : txn.category_id
+            const currentEntityId = 'merchant_entity_id' in edit ? edit.merchant_entity_id : txn.merchant_entity_id
+            const entityLabel = entityList.find((e) => e.id === txn.merchant_entity_id)
+            return (
+              <Fragment key={txn.id}>
+                <tr
+                  className={`table-row cursor-pointer ${isOpen ? 'bg-amber-500/5' : ''}`}
+                  onClick={() => toggle(txn.id)}
+                >
+                  <td className="table-cell text-xs text-ink/50 whitespace-nowrap">
+                    {new Date(txn.date + 'T12:00:00').toLocaleDateString('es-CR')}
+                  </td>
+                  <td className="table-cell max-w-xs">
+                    <p className="truncate text-sm">{txn.description_raw}</p>
+                  </td>
+                  <td className="table-cell text-xs">
+                    {entityLabel
+                      ? <span className="text-ink/70">{entityLabel.display_name || entityLabel.canonical_name}</span>
+                      : <span className="text-amber-500">Sin entidad</span>}
+                  </td>
+                  <td className="table-cell text-right">
+                    <CurrencyAmount amount={txn.amount} currency={txn.currency} direction={txn.direction} />
+                  </td>
+                  <td className="table-cell text-xs">
+                    {txn.category_id
+                      ? <span className="text-ink/70">{catMap[txn.category_id]?.name}</span>
+                      : <span className="text-amber-500">Sin categoría</span>}
+                  </td>
+                  <td className="table-cell text-ink/30 text-xs text-center">{isOpen ? '▲' : '▼'}</td>
+                </tr>
+
+                {isOpen && (
+                  <tr>
+                    <td colSpan={6} className="bg-[#F5EFE0]/70 px-4 py-3 border-b border-brown-600/10">
+                      <div className="flex flex-wrap gap-4 items-end">
+                        {/* Category */}
+                        <div className="flex-1 min-w-44">
+                          <label className="block text-xs font-medium text-ink/60 mb-1">Categoría</label>
+                          <select
+                            className="select text-sm"
+                            value={currentCatId || ''}
+                            onChange={(e) => setEdit(txn.id, 'category_id', e.target.value || null)}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <option value="">— Sin categoría —</option>
+                            {(categories || []).map((c) => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Entity */}
+                        <div className="flex-1 min-w-52">
+                          <label className="block text-xs font-medium text-ink/60 mb-1">Entidad</label>
+                          <input
+                            type="text"
+                            className="input text-sm mb-1"
+                            placeholder="Buscar entidad…"
+                            value={entitySearch}
+                            onChange={(e) => setEntitySearch(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            autoFocus
+                          />
+                          <select
+                            className="select text-sm"
+                            value={currentEntityId || ''}
+                            onChange={(e) => setEdit(txn.id, 'merchant_entity_id', e.target.value || null)}
+                            onClick={(e) => e.stopPropagation()}
+                            size={Math.min(filteredEntities.length + 1, 5)}
+                          >
+                            <option value="">— Sin entidad —</option>
+                            {filteredEntities.map((e) => (
+                              <option key={e.id} value={e.id}>{e.display_name || e.canonical_name}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex gap-2 shrink-0 pb-0.5">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); save(txn) }}
+                            className="btn-primary text-xs py-1.5 px-4"
+                          >
+                            Guardar y cerrar
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); dismiss(txn) }}
+                            className="btn-ghost text-xs py-1.5 px-3 border border-brown-600/30"
+                          >
+                            Solo cerrar
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            )
+          })}
         </tbody>
       </table>
       {txns && <Pagination page={page} pageSize={PAGE_SIZE} total={txns.total} onPage={setPage} />}
