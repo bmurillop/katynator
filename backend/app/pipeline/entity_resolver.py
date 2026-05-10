@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.base import AIProvider
 from app.models.entity import Entity
 from app.models.entity_pattern import EntityPattern
-from app.models.enums import PatternSource, UnresolvedEntityStatus
+from app.models.entity_rule import EntityRule
+from app.models.enums import MatchType, PatternSource, UnresolvedEntityStatus
 from app.models.unresolved_entity_name import UnresolvedEntityName
 from app.pipeline.dedup import normalize_description
 
@@ -103,6 +104,18 @@ async def resolve_entity(
     suggested_entity_id: Optional[UUID] = best_id if best_score >= SUGGEST_THRESHOLD else None
     suggestion_confidence: Optional[float] = best_score if best_score >= SUGGEST_THRESHOLD else None
 
+    # ── Step 3b: entity rules ────────────────────────────────────────────────
+    rules = (
+        await db.execute(
+            select(EntityRule).order_by(EntityRule.priority.desc())
+        )
+    ).scalars().all()
+    for rule in rules:
+        if _rule_matches(rule, normalized):
+            logger.info("Entity rule matched: %r → %s (rule %s)", raw_name, rule.entity_id, rule.id)
+            await _add_pattern(raw_name, normalized, rule.entity_id, PatternSource.auto_detected, db)
+            return rule.entity_id
+
     # ── Step 4: AI suggestion ────────────────────────────────────────────────
     if suggested_entity_id is None:
         candidate_names = (await db.execute(
@@ -146,6 +159,24 @@ async def _add_pattern(
         .on_conflict_do_nothing()
     )
     await db.execute(stmt)
+
+
+def _rule_matches(rule: EntityRule, description_normalized: str) -> bool:
+    """Test whether a normalized description satisfies an entity rule."""
+    import re
+    p = (rule.memo_pattern or "").lower()
+    d = description_normalized.lower()
+    if rule.match_type == MatchType.contains:
+        return p in d
+    if rule.match_type == MatchType.starts_with:
+        return d.startswith(p)
+    if rule.match_type == MatchType.exact:
+        return d == p
+    if rule.match_type == MatchType.regex:
+        return bool(re.search(rule.memo_pattern or "", d, re.IGNORECASE))
+    if rule.match_type == MatchType.any:
+        return True
+    return False
 
 
 async def _upsert_unresolved(

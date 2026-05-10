@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings as _config
 from app.auth.bootstrap import bootstrap_admin, seed_categories
 from app.api import health, auth, settings
-from app.api import emails, persons, accounts, entities, categories, category_rules, transactions, unresolved_entities, users
+from app.api import emails, persons, accounts, entities, categories, category_rules, entity_rules, transactions, unresolved_entities, users
 from app.scheduler import start_scheduler, stop_scheduler
 
 logging.basicConfig(level=logging.INFO)
@@ -41,6 +41,7 @@ app.include_router(emails.router, prefix="/api", tags=["emails"])
 app.include_router(persons.router, prefix="/api", tags=["persons"])
 app.include_router(accounts.router, prefix="/api", tags=["accounts"])
 app.include_router(entities.router, prefix="/api", tags=["entities"])
+app.include_router(entity_rules.router, prefix="/api", tags=["entity-rules"])
 app.include_router(categories.router, prefix="/api", tags=["categories"])
 app.include_router(category_rules.router, prefix="/api", tags=["category-rules"])
 app.include_router(transactions.router, prefix="/api", tags=["transactions"])

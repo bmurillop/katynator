@@ -18,6 +18,7 @@ from app.auth.deps import require_admin, require_member
 from app.db import get_db
 from app.models.account import Account
 from app.models.category import Category
+from app.models.entity import Entity
 from app.models.enums import CategorySource, Currency, TransactionDirection
 from app.models.transaction import Transaction
 
@@ -239,6 +240,40 @@ async def suggest_categories_ai(db: AsyncSession = Depends(get_db)):
                 suggested += 1
         except Exception:
             logger.warning("AI suggestion failed for transaction %s", txn.id, exc_info=True)
+
+    await db.commit()
+    return {"suggested": suggested, "checked": len(txns)}
+
+
+@router.post("/transactions/suggest-entities", dependencies=[Depends(require_member)])
+async def suggest_entities_ai(db: AsyncSession = Depends(get_db)):
+    """Ask the active AI provider to suggest an entity for transactions with none resolved."""
+    from app.ai.factory import get_active_provider
+
+    provider = await get_active_provider(db)
+
+    entities = (await db.execute(select(Entity))).scalars().all()
+    entity_name_to_id = {e.canonical_name: e.id for e in entities}
+    entity_names = list(entity_name_to_id.keys())
+
+    if not entity_names:
+        return {"suggested": 0, "checked": 0}
+
+    txns = (
+        await db.execute(
+            select(Transaction).where(Transaction.merchant_entity_id.is_(None))
+        )
+    ).scalars().all()
+
+    suggested = 0
+    for txn in txns:
+        try:
+            name = await provider.suggest_entity_match(txn.description_raw, entity_names)
+            if name and name in entity_name_to_id:
+                txn.merchant_entity_id = entity_name_to_id[name]
+                suggested += 1
+        except Exception:
+            logger.warning("AI entity suggestion failed for transaction %s", txn.id, exc_info=True)
 
     await db.commit()
     return {"suggested": suggested, "checked": len(txns)}

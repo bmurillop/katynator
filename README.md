@@ -16,6 +16,21 @@ Un rastreador de finanzas personales auto-hospedado para la familia. Monitorea u
 
 ---
 
+## ¿Quién? y ¿Qué? — la distinción clave
+
+El sistema separa dos preguntas sobre cada transacción:
+
+**¿Quién? → Entidades**
+Una entidad es cualquier nombre estable detrás del texto ruidoso del banco: un comercio, un banco, una persona, una fuente de ingreso. El banco puede escribir `99837153 PERIMERCADO SA` un mes y `00912847 SUPERMERCADO PERIMERCADO` el siguiente — ambos se resuelven a la misma entidad "Perimercado". Las entidades se identifican por reglas de texto (contiene / empieza con / exacto / regex) y como respaldo por IA.
+
+**¿Qué? → Categorías**
+Las categorías responden para qué fue el dinero: Supermercado, Educación, Transporte, etc. Las reglas de categoría usan *dos niveles*: `(entidad + patrón del memo)`. Esto permite que la misma entidad (p. ej. una persona) caiga en categorías distintas según el texto de la descripción — "Paola / BECA" → Educación, "Paola / ALQUILER" → Vivienda.
+
+**El orden importa:**
+Primero se identifica el quién (entidad), luego se clasifica el qué (categoría). Los reportes se pueden filtrar por cualquiera de los dos, o por ambos a la vez.
+
+---
+
 ## Contenido
 
 | | |
@@ -61,6 +76,7 @@ Abre `http://localhost` (o `http://finanzas.internal` si configuraste DNS en el 
 | Bandeja de entrada (entidades sin resolver, revisión, correos fallidos) | ✅ Completo |
 | Sugerencias de categoría con IA + confirmación en la bandeja | ✅ Completo |
 | Reglas de categorización (crear, editar, re-aplicar, transferencias) | ✅ Completo |
+| Reglas de entidad (identificar ¿quién? por patrón de memo) | ✅ Completo |
 | Panel de transacciones internas (is_transfer) | ✅ Completo |
 | Página de reportes + gráficas avanzadas | 🔲 Pendiente |
 | Página de emails procesados | 🔲 Pendiente |

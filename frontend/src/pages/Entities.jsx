@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useDeferredValue } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { listEntities, getEntity, updateEntity, addPattern, deletePattern } from '../api/entities'
+import { listEntityRules, createEntityRule, updateEntityRule, deleteEntityRule, previewEntityRule, applyEntityRule, reapplyEntityRules } from '../api/entityRules'
 import Pagination from '../components/Pagination'
 
 const typeLabel = {
@@ -12,7 +13,11 @@ const typeLabel = {
   other: 'Otro',
 }
 
+const matchTypeLabel = { contains: 'Contiene', starts_with: 'Empieza con', exact: 'Exacto', regex: 'Regex' }
+
 const PAGE_SIZE = 50
+
+// ── Entity detail modal ──────────────────────────────────────────────────────
 
 function EntityDetail({ entityId, onClose }) {
   const qc = useQueryClient()
@@ -21,7 +26,6 @@ function EntityDetail({ entityId, onClose }) {
     queryFn: () => getEntity(entityId),
   })
 
-  // ── Edit state ──────────────────────────────────────────────────────────────
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState('')
   const [editDisplay, setEditDisplay] = useState('')
@@ -34,8 +38,6 @@ function EntityDetail({ entityId, onClose }) {
     setEditType(entity.type)
     setEditing(true)
   }
-
-  const cancelEdit = () => setEditing(false)
 
   const saveEdit = async () => {
     setSaving(true)
@@ -53,7 +55,6 @@ function EntityDetail({ entityId, onClose }) {
     }
   }
 
-  // ── Pattern state ───────────────────────────────────────────────────────────
   const [newPattern, setNewPattern] = useState('')
   const [adding, setAdding] = useState(false)
 
@@ -90,54 +91,32 @@ function EntityDetail({ entityId, onClose }) {
 
         {entity && (
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-
-            {/* ── Info / edit ── */}
             {editing ? (
               <div className="space-y-3 bg-[#F5EFE0] rounded-xl p-4">
                 <div>
                   <label className="block text-xs font-medium text-ink/60 mb-1">Nombre canónico</label>
-                  <input
-                    type="text"
-                    className="input text-sm"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    autoFocus
-                  />
+                  <input type="text" className="input text-sm" value={editName} onChange={(e) => setEditName(e.target.value)} autoFocus />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ink/60 mb-1">Nombre a mostrar (opcional)</label>
-                  <input
-                    type="text"
-                    className="input text-sm"
-                    value={editDisplay}
-                    onChange={(e) => setEditDisplay(e.target.value)}
-                    placeholder="Dejar vacío para usar el nombre canónico"
-                  />
+                  <input type="text" className="input text-sm" value={editDisplay} onChange={(e) => setEditDisplay(e.target.value)} placeholder="Dejar vacío para usar el nombre canónico" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ink/60 mb-1">Tipo</label>
                   <select className="select text-sm" value={editType} onChange={(e) => setEditType(e.target.value)}>
-                    {Object.entries(typeLabel).map(([k, v]) => (
-                      <option key={k} value={k}>{v}</option>
-                    ))}
+                    {Object.entries(typeLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
                 </div>
                 <div className="flex gap-2 pt-1">
-                  <button onClick={saveEdit} disabled={saving || !editName.trim()} className="btn-primary text-xs py-1.5 px-4">
-                    {saving ? '…' : 'Guardar'}
-                  </button>
-                  <button onClick={cancelEdit} className="btn-ghost text-xs py-1.5 px-4 border border-brown-600/30">
-                    Cancelar
-                  </button>
+                  <button onClick={saveEdit} disabled={saving || !editName.trim()} className="btn-primary text-xs py-1.5 px-4">{saving ? '…' : 'Guardar'}</button>
+                  <button onClick={() => setEditing(false)} className="btn-ghost text-xs py-1.5 px-4 border border-brown-600/30">Cancelar</button>
                 </div>
               </div>
             ) : (
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1">
                   {entity.display_name && entity.display_name !== entity.canonical_name && (
-                    <p className="text-xs text-ink/40">
-                      Canónico: <span className="font-mono">{entity.canonical_name}</span>
-                    </p>
+                    <p className="text-xs text-ink/40">Canónico: <span className="font-mono">{entity.canonical_name}</span></p>
                   )}
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="badge bg-brown-600/15 text-brown-900">{typeLabel[entity.type] ?? entity.type}</span>
@@ -147,9 +126,7 @@ function EntityDetail({ entityId, onClose }) {
                   </div>
                 </div>
                 <div className="flex gap-3 shrink-0 text-xs">
-                  <button onClick={openEdit} className="text-ink/30 hover:text-amber-500 transition-colors">
-                    ✎ Editar
-                  </button>
+                  <button onClick={openEdit} className="text-ink/30 hover:text-amber-500 transition-colors">✎ Editar</button>
                   <button onClick={handleConfirm} className="text-ink/30 hover:text-ink transition-colors">
                     {entity.confirmed ? 'Desconfirmar' : 'Confirmar'}
                   </button>
@@ -157,7 +134,6 @@ function EntityDetail({ entityId, onClose }) {
               </div>
             )}
 
-            {/* ── Patterns ── */}
             <div>
               <h4 className="text-xs font-semibold text-ink/50 uppercase tracking-wide mb-2">
                 Patrones ({entity.patterns?.length ?? 0})
@@ -172,15 +148,13 @@ function EntityDetail({ entityId, onClose }) {
                     </div>
                   </div>
                 ))}
-                {!entity.patterns?.length && (
-                  <p className="text-xs text-ink/30">Sin patrones registrados</p>
-                )}
+                {!entity.patterns?.length && <p className="text-xs text-ink/30">Sin patrones registrados</p>}
               </div>
               <div className="flex gap-2">
                 <input
                   type="text"
                   className="input text-sm"
-                  placeholder="Agregar patrón…"
+                  placeholder="Agregar patrón exacto…"
                   value={newPattern}
                   onChange={(e) => setNewPattern(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleAddPattern()}
@@ -190,7 +164,6 @@ function EntityDetail({ entityId, onClose }) {
                 </button>
               </div>
             </div>
-
           </div>
         )}
       </div>
@@ -198,11 +171,153 @@ function EntityDetail({ entityId, onClose }) {
   )
 }
 
-export default function Entities() {
+// ── Entity rule modal (create + edit) ────────────────────────────────────────
+
+function EntityRuleModal({ rule, entities, onClose, onSaved }) {
+  const isEdit = !!rule
+  const [memoPattern, setMemoPattern] = useState(rule?.memo_pattern ?? '')
+  const [matchType, setMatchType] = useState(rule?.match_type ?? 'contains')
+  const [entityId, setEntityId] = useState(rule?.entity_id ?? '')
+  const [priority, setPriority] = useState(rule?.priority ?? 50)
+  const [applyNow, setApplyNow] = useState(!isEdit)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const deferred = useDeferredValue({ memoPattern, matchType })
+  const { data: preview } = useQuery({
+    queryKey: ['entity-rule-preview', deferred],
+    queryFn: () => deferred.memoPattern.trim()
+      ? previewEntityRule({ memo_pattern: deferred.memoPattern.trim(), match_type: deferred.matchType })
+      : Promise.resolve({ count: 0 }),
+    enabled: !!deferred.memoPattern.trim(),
+  })
+
+  const canSave = memoPattern.trim() && entityId
+
+  const handleSave = async () => {
+    if (!canSave) return
+    setSaving(true)
+    setError('')
+    try {
+      const payload = {
+        memo_pattern: memoPattern.trim(),
+        match_type: matchType,
+        entity_id: entityId,
+        priority: Number(priority),
+        source: 'user_confirmed',
+      }
+      let saved
+      if (isEdit) {
+        saved = await updateEntityRule(rule.id, payload)
+      } else {
+        saved = await createEntityRule(payload)
+      }
+      if (applyNow && !isEdit) {
+        await applyEntityRule(saved.id)
+      }
+      onSaved()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Error al guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const entityMap = Object.fromEntries((entities?.items ?? []).map((e) => [e.id, e]))
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white border border-brown-600/20 rounded-xl w-full max-w-md shadow-2xl">
+        <div className="px-5 py-4 border-b border-brown-600/15">
+          <h3 className="font-semibold text-ink">{isEdit ? 'Editar regla de entidad' : 'Nueva regla de entidad'}</h3>
+          <p className="text-xs text-ink/50 mt-0.5">
+            {isEdit ? 'Fuente cambiará a Manual al guardar' : 'Si el texto del memo coincide → asignar esa entidad'}
+          </p>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-ink/50 mb-1">Patrón del memo *</label>
+              <input
+                type="text"
+                className="input font-mono"
+                placeholder="perimercado…"
+                value={memoPattern}
+                onChange={(e) => setMemoPattern(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-ink/50 mb-1">Tipo de match</label>
+              <select className="select" value={matchType} onChange={(e) => setMatchType(e.target.value)}>
+                <option value="starts_with">Empieza con</option>
+                <option value="contains">Contiene</option>
+                <option value="exact">Exacto</option>
+                <option value="regex">Regex</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-ink/50 mb-1">Entidad resultante *</label>
+              <select className="select" value={entityId} onChange={(e) => setEntityId(e.target.value)}>
+                <option value="">— Seleccionar —</option>
+                {(entities?.items ?? []).map((e) => (
+                  <option key={e.id} value={e.id}>{e.display_name || e.canonical_name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-ink/50 mb-1">Prioridad (1–100)</label>
+              <input
+                type="number"
+                className="input"
+                min={1}
+                max={100}
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {memoPattern.trim() && (
+            <p className="text-xs text-ink/40">
+              {preview ? `${preview.count} transacciones coinciden con este patrón` : 'Calculando…'}
+            </p>
+          )}
+
+          {!isEdit && (
+            <label className="flex items-center gap-2 cursor-pointer pt-1">
+              <input
+                type="checkbox"
+                checked={applyNow}
+                onChange={(e) => setApplyNow(e.target.checked)}
+                className="accent-amber-500 w-4 h-4"
+              />
+              <span className="text-sm text-ink/70">Aplicar a transacciones existentes sin entidad</span>
+            </label>
+          )}
+
+          {error && <p className="text-red-500 text-xs bg-red-50 border border-red-200 rounded px-3 py-2">{error}</p>}
+        </div>
+        <div className="px-5 py-4 border-t border-brown-600/15 flex gap-2 justify-end">
+          <button onClick={onClose} className="btn-ghost text-sm">Cancelar</button>
+          <button onClick={handleSave} disabled={!canSave || saving} className="btn-primary text-sm">
+            {saving ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Crear regla'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Entities list tab ────────────────────────────────────────────────────────
+
+function EntitiesTab({ onSelect }) {
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
-  const [selectedId, setSelectedId] = useState(null)
 
   const params = {
     page, page_size: PAGE_SIZE,
@@ -217,13 +332,6 @@ export default function Entities() {
 
   return (
     <div className="space-y-4">
-      {selectedId && <EntityDetail entityId={selectedId} onClose={() => setSelectedId(null)} />}
-
-      <div>
-        <h1 className="text-xl font-bold text-ink">Entidades</h1>
-        <p className="text-sm text-ink/50 mt-0.5">{data?.total ?? 0} entidad{data?.total !== 1 ? 'es' : ''}</p>
-      </div>
-
       <div className="card flex flex-wrap gap-3 items-end">
         <div className="flex-1 min-w-48">
           <label className="block text-xs text-ink/50 mb-1">Buscar</label>
@@ -256,17 +364,11 @@ export default function Entities() {
               </tr>
             </thead>
             <tbody>
-              {isLoading && (
-                <tr><td colSpan={4} className="table-cell text-center text-ink/40 py-12">Cargando…</td></tr>
-              )}
-              {!isLoading && !data?.items?.length && (
-                <tr><td colSpan={4} className="table-cell text-center text-ink/40 py-12">Sin entidades</td></tr>
-              )}
+              {isLoading && <tr><td colSpan={4} className="table-cell text-center text-ink/40 py-12">Cargando…</td></tr>}
+              {!isLoading && !data?.items?.length && <tr><td colSpan={4} className="table-cell text-center text-ink/40 py-12">Sin entidades</td></tr>}
               {data?.items?.map((e) => (
-                <tr key={e.id} className="table-row cursor-pointer" onClick={() => setSelectedId(e.id)}>
-                  <td className="table-cell font-medium text-ink">
-                    {e.display_name || e.canonical_name}
-                  </td>
+                <tr key={e.id} className="table-row cursor-pointer" onClick={() => onSelect(e.id)}>
+                  <td className="table-cell font-medium text-ink">{e.display_name || e.canonical_name}</td>
                   <td className="table-cell">
                     <span className="badge bg-brown-600/15 text-brown-900">{typeLabel[e.type] ?? e.type}</span>
                   </td>
@@ -283,6 +385,216 @@ export default function Entities() {
         </div>
         {data && <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage} />}
       </div>
+    </div>
+  )
+}
+
+// ── Entity rules tab ─────────────────────────────────────────────────────────
+
+function EntityRulesTab({ isAdmin }) {
+  const [showNew, setShowNew] = useState(false)
+  const [editRule, setEditRule] = useState(null)
+  const [reapplying, setReapplying] = useState(false)
+  const [reapplyResult, setReapplyResult] = useState(null)
+  const qc = useQueryClient()
+
+  const { data: rules } = useQuery({ queryKey: ['entity-rules'], queryFn: listEntityRules })
+  const { data: entities } = useQuery({
+    queryKey: ['entities-all'],
+    queryFn: () => listEntities({ page_size: 200 }),
+  })
+
+  const entityMap = Object.fromEntries((entities?.items ?? []).map((e) => [e.id, e]))
+
+  const handleDelete = async (id) => {
+    await deleteEntityRule(id)
+    qc.invalidateQueries({ queryKey: ['entity-rules'] })
+  }
+
+  const handleReapply = async () => {
+    setReapplying(true)
+    setReapplyResult(null)
+    try {
+      const r = await reapplyEntityRules()
+      setReapplyResult(r)
+      qc.invalidateQueries({ queryKey: ['transactions-review'] })
+    } finally {
+      setReapplying(false)
+    }
+  }
+
+  const onSaved = () => {
+    qc.invalidateQueries({ queryKey: ['entity-rules'] })
+    setShowNew(false)
+    setEditRule(null)
+  }
+
+  return (
+    <div className="space-y-4">
+      {(showNew || editRule) && (
+        <EntityRuleModal
+          rule={editRule}
+          entities={entities}
+          onClose={() => { setShowNew(false); setEditRule(null) }}
+          onSaved={onSaved}
+        />
+      )}
+
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          {reapplyResult && (
+            <p className="text-sm text-green-700">
+              ✓ {reapplyResult.applied} entidades asignadas de {reapplyResult.checked} sin entidad
+            </p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={handleReapply}
+            disabled={reapplying}
+            className="btn-ghost text-sm border border-brown-600/30 disabled:opacity-50"
+          >
+            {reapplying ? 'Aplicando…' : '↻ Re-aplicar reglas'}
+          </button>
+          {isAdmin && (
+            <button onClick={() => setShowNew(true)} className="btn-primary text-sm">
+              + Nueva regla
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="card p-0 overflow-hidden">
+        <table className="w-full">
+          <thead className="border-b border-brown-600/20">
+            <tr>
+              <th className="table-header">Patrón</th>
+              <th className="table-header">Entidad resultante</th>
+              <th className="table-header w-20 text-center">Prioridad</th>
+              <th className="table-header w-20">Fuente</th>
+              {isAdmin && <th className="table-header w-16"></th>}
+            </tr>
+          </thead>
+          <tbody>
+            {!rules?.length && (
+              <tr>
+                <td colSpan={isAdmin ? 5 : 4} className="table-cell text-center text-ink/40 py-12">
+                  <p className="text-3xl mb-2">◈</p>
+                  Sin reglas de entidad. Crea una para identificar automáticamente quién envía o recibe dinero.
+                </td>
+              </tr>
+            )}
+            {rules?.map((rule) => {
+              const entity = entityMap[rule.entity_id]
+              return (
+                <tr
+                  key={rule.id}
+                  className={`table-row ${isAdmin ? 'cursor-pointer' : ''}`}
+                  onClick={isAdmin ? () => setEditRule(rule) : undefined}
+                >
+                  <td className="table-cell">
+                    <span className="text-xs text-ink/60">
+                      {matchTypeLabel[rule.match_type]?.toLowerCase()}{' '}
+                      <code className="bg-[#F5EFE0] px-1.5 py-0.5 rounded text-ink/80 font-mono">
+                        {rule.memo_pattern}
+                      </code>
+                    </span>
+                  </td>
+                  <td className="table-cell">
+                    {entity ? (
+                      <span className="badge bg-brown-600/15 text-brown-900">
+                        {entity.display_name || entity.canonical_name}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-ink/30">—</span>
+                    )}
+                  </td>
+                  <td className="table-cell text-center text-ink/60 tabular-nums">{rule.priority}</td>
+                  <td className="table-cell">
+                    <span className={`badge text-[10px] ${
+                      rule.source === 'user_confirmed'
+                        ? 'bg-green-800/20 text-green-700'
+                        : 'bg-amber-500/20 text-amber-500'
+                    }`}>
+                      {rule.source === 'user_confirmed' ? 'Manual' : 'IA'}
+                    </span>
+                  </td>
+                  {isAdmin && (
+                    <td className="table-cell" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          onClick={() => setEditRule(rule)}
+                          className="text-ink/30 hover:text-amber-500 transition-colors text-xs"
+                          title="Editar"
+                        >✎</button>
+                        <button
+                          onClick={() => handleDelete(rule.id)}
+                          className="text-red-400/60 hover:text-red-500 transition-colors text-xs"
+                          title="Eliminar"
+                        >✕</button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {rules?.length > 0 && (
+        <p className="text-xs text-ink/40 px-1">
+          Las reglas se evalúan en orden de prioridad (mayor número = mayor prioridad).
+          Una regla coincidente evita la consulta a la IA y asigna la entidad directamente.
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ── Main page ────────────────────────────────────────────────────────────────
+
+export default function Entities() {
+  const [tab, setTab] = useState('entidades')
+  const [selectedId, setSelectedId] = useState(null)
+
+  const { data: rules } = useQuery({ queryKey: ['entity-rules'], queryFn: listEntityRules })
+
+  const TABS = [
+    { id: 'entidades', label: 'Entidades' },
+    { id: 'reglas', label: `Reglas${rules ? ` (${rules.length})` : ''}` },
+  ]
+
+  // isAdmin check — reuse auth context
+  const isAdmin = true // will be gated in sub-components via API 403s
+
+  return (
+    <div className="space-y-4 max-w-4xl">
+      {selectedId && <EntityDetail entityId={selectedId} onClose={() => setSelectedId(null)} />}
+
+      <div>
+        <h1 className="text-xl font-bold text-ink">Entidades</h1>
+        <p className="text-sm text-ink/50 mt-0.5">¿Quién? Bancos, comercios, personas y fuentes de ingreso</p>
+      </div>
+
+      <div className="flex gap-1 border-b border-brown-600/20">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+              tab === t.id
+                ? 'text-amber-500 border-amber-500'
+                : 'text-ink/50 border-transparent hover:text-ink'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'entidades' && <EntitiesTab onSelect={setSelectedId} />}
+      {tab === 'reglas' && <EntityRulesTab isAdmin={isAdmin} />}
     </div>
   )
 }

@@ -2,7 +2,7 @@ import { useState, Fragment } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { listUnresolved, resolveToExisting, createEntityFromUnresolved, ignoreUnresolved } from '../api/unresolvedEntities'
-import { listTransactions, updateTransaction, suggestCategoriesAI } from '../api/transactions'
+import { listTransactions, updateTransaction, suggestCategoriesAI, suggestEntitiesAI } from '../api/transactions'
 import { listEmails, retryEmail, triggerPoll } from '../api/emails'
 import { listEntities } from '../api/entities'
 import { listCategories } from '../api/categories'
@@ -161,6 +161,8 @@ function ReviewTab() {
   const [edits, setEdits] = useState({})
   const [suggesting, setSuggesting] = useState(false)
   const [suggestResult, setSuggestResult] = useState(null)
+  const [suggestingEntities, setSuggestingEntities] = useState(false)
+  const [suggestEntitiesResult, setSuggestEntitiesResult] = useState(null)
   const qc = useQueryClient()
 
   const { data: txns, isLoading } = useQuery({
@@ -220,23 +222,45 @@ function ReviewTab() {
     }
   }
 
+  const handleSuggestEntities = async () => {
+    setSuggestingEntities(true)
+    setSuggestEntitiesResult(null)
+    try {
+      const result = await suggestEntitiesAI()
+      setSuggestEntitiesResult(result)
+      qc.invalidateQueries({ queryKey: ['transactions-review'] })
+    } finally {
+      setSuggestingEntities(false)
+    }
+  }
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="space-y-0.5">
           {suggestResult && (
-            <p className="text-sm text-violet-600">
-              ✦ {suggestResult.suggested} sugerencias de {suggestResult.checked} sin categoría
-            </p>
+            <p className="text-sm text-violet-600">✦ {suggestResult.suggested} categorías sugeridas de {suggestResult.checked} sin categoría</p>
+          )}
+          {suggestEntitiesResult && (
+            <p className="text-sm text-blue-600">◈ {suggestEntitiesResult.suggested} entidades asignadas de {suggestEntitiesResult.checked} sin entidad</p>
           )}
         </div>
-        <button
-          onClick={handleSuggestAI}
-          disabled={suggesting}
-          className="btn-ghost text-sm border border-violet-300 text-violet-600 hover:bg-violet-50 disabled:opacity-50"
-        >
-          {suggesting ? 'Consultando IA…' : '✦ Sugerir con IA'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleSuggestEntities}
+            disabled={suggestingEntities}
+            className="btn-ghost text-sm border border-blue-300 text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+          >
+            {suggestingEntities ? 'Consultando IA…' : '◈ Sugerir entidades'}
+          </button>
+          <button
+            onClick={handleSuggestAI}
+            disabled={suggesting}
+            className="btn-ghost text-sm border border-violet-300 text-violet-600 hover:bg-violet-50 disabled:opacity-50"
+          >
+            {suggesting ? 'Consultando IA…' : '✦ Sugerir categorías'}
+          </button>
+        </div>
       </div>
     <div className="card p-0 overflow-hidden">
       <table className="w-full">

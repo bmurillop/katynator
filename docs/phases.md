@@ -25,6 +25,17 @@ The canonical spec is `family-finance-tracker-brief.md` at the repo root. This f
 - `parse_pdf` CLI tool for prompt iteration without the full pipeline
 - `GET/PATCH /api/settings` with AI provider field
 
+## The WHO / WHAT distinction
+
+Every transaction classification answers two questions:
+
+- **WHO** → *Entity*: the stable real-world identity behind the noisy raw bank text (a merchant, bank, person, or income source). Identified by entity rules (pattern matching) and AI fallback. Stored in `merchant_entity_id`.
+- **WHAT** → *Category*: what the money was for (Groceries, Education, Transport…). Assigned by two-tier category rules keyed on `(entity + memo_pattern)`, so the same payee can map to different categories depending on the memo. Stored in `category_id`.
+
+The pipeline resolves WHO first, then uses that result to drive the WHAT classification. Reports can filter and group by either dimension independently.
+
+---
+
 ## Phase 3 — Email Pipeline ✅
 
 - IMAP poller via APScheduler (runs in-process)
@@ -39,6 +50,7 @@ The canonical spec is `family-finance-tracker-brief.md` at the repo root. This f
 - Transaction creation with `dedup_key` and `ON CONFLICT DO NOTHING`
 - Two-tier category rule engine (entity + memo pattern, priority-ordered)
 - Account auto-linking via `account_number_hint` + `bank_entity_id`
+- **Entity rules** (step 3b in resolver): pattern-based rules (contains/starts_with/exact/regex) fire after fuzzy matching and before AI, resolving WHO deterministically
 - **AI category suggestions**: when no rule matches, `suggest_category` is called and result stored as `category_source=ai_suggested`
 - Migration 0002: `unresolved_entity_names` table
 - Migration 0003: 12 seeded system categories
@@ -56,6 +68,8 @@ The canonical spec is `family-finance-tracker-brief.md` at the repo root. This f
 - `/api/transactions/summary/monthly` — month-bucketed totals for charts (excludes transfers)
 - `/api/transactions/summary/by-category` — debit totals grouped by category + currency (used for donut chart)
 - `/api/transactions/suggest-categories` — bulk AI suggestion for all uncategorized transactions
+- `/api/transactions/suggest-entities` — bulk AI suggestion for all transactions with no entity
+- `/api/entity-rules` CRUD + preview + apply single + reapply all
 - `/api/entities` list + PATCH + pattern management
 - `/api/unresolved-entities` list + resolve + ignore
 - `/api/categories` CRUD
@@ -76,6 +90,9 @@ The canonical spec is `family-finance-tracker-brief.md` at the repo root. This f
   - *Transacciones por revisar*: expandable rows with inline category + entity editing; AI suggestion chip (violet IA badge) with one-click confirm; bulk "✦ Sugerir con IA" button
   - *Correos fallidos*: error log with retry and manual poll trigger
 - **Entities**: list + detail modal with inline edit (name, display name, type)
+- **Entities** (2 tabs):
+  - *Entidades*: list + detail modal (edit name, type; manage exact patterns)
+  - *Reglas*: entity rules — create/edit (pattern + match type → entity); re-apply all; "◈ Sugerir entidades" AI bulk button
 - **Categories** (2 tabs):
   - *Categorías*: create + edit
   - *Reglas*: create + **edit** (click row or ✎ button); transfer rules (sets_transfer); live match-count preview; apply single rule; reapply all
