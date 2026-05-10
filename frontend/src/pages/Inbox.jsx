@@ -2,7 +2,7 @@ import { useState, Fragment } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { listUnresolved, resolveToExisting, createEntityFromUnresolved, ignoreUnresolved } from '../api/unresolvedEntities'
-import { listTransactions, updateTransaction } from '../api/transactions'
+import { listTransactions, updateTransaction, suggestCategoriesAI } from '../api/transactions'
 import { listEmails, retryEmail, triggerPoll } from '../api/emails'
 import { listEntities } from '../api/entities'
 import { listCategories } from '../api/categories'
@@ -159,6 +159,8 @@ function ReviewTab() {
   const [expanded, setExpanded] = useState(null)
   const [entitySearch, setEntitySearch] = useState('')
   const [edits, setEdits] = useState({})
+  const [suggesting, setSuggesting] = useState(false)
+  const [suggestResult, setSuggestResult] = useState(null)
   const qc = useQueryClient()
 
   const { data: txns, isLoading } = useQuery({
@@ -206,7 +208,36 @@ function ReviewTab() {
     qc.invalidateQueries({ queryKey: ['transactions-review'] })
   }
 
+  const handleSuggestAI = async () => {
+    setSuggesting(true)
+    setSuggestResult(null)
+    try {
+      const result = await suggestCategoriesAI()
+      setSuggestResult(result)
+      qc.invalidateQueries({ queryKey: ['transactions-review'] })
+    } finally {
+      setSuggesting(false)
+    }
+  }
+
   return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          {suggestResult && (
+            <p className="text-sm text-violet-600">
+              ✦ {suggestResult.suggested} sugerencias de {suggestResult.checked} sin categoría
+            </p>
+          )}
+        </div>
+        <button
+          onClick={handleSuggestAI}
+          disabled={suggesting}
+          className="btn-ghost text-sm border border-violet-300 text-violet-600 hover:bg-violet-50 disabled:opacity-50"
+        >
+          {suggesting ? 'Consultando IA…' : '✦ Sugerir con IA'}
+        </button>
+      </div>
     <div className="card p-0 overflow-hidden">
       <table className="w-full">
         <thead className="border-b border-brown-600/20">
@@ -347,6 +378,7 @@ function ReviewTab() {
         </tbody>
       </table>
       {txns && <Pagination page={page} pageSize={PAGE_SIZE} total={txns.total} onPage={setPage} />}
+    </div>
     </div>
   )
 }

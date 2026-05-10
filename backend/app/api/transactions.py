@@ -12,11 +12,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import logging
+
 from app.auth.deps import require_admin, require_member
 from app.db import get_db
 from app.models.account import Account
+from app.models.category import Category
 from app.models.enums import CategorySource, Currency, TransactionDirection
 from app.models.transaction import Transaction
+
+logger = logging.getLogger(__name__)
 from app.schemas.transaction import (
     TransactionListResponse,
     TransactionMonthlyItem,
@@ -135,6 +140,45 @@ async def transaction_summary_monthly(
             for r in rows
         ]
     )
+
+
+@router.post("/transactions/suggest-categories", dependencies=[Depends(require_member)])
+async def suggest_categories_ai(db: AsyncSession = Depends(get_db)):
+    """Ask the active AI provider to suggest categories for all uncategorized, non-transfer transactions."""
+    from app.ai.factory import get_active_provider
+
+    provider = await get_active_provider(db)
+
+    categories = (await db.execute(select(Category))).scalars().all()
+    cat_name_to_id = {c.name: c.id for c in categories}
+    cat_names = list(cat_name_to_id.keys())
+
+    if not cat_names:
+        return {"suggested": 0, "checked": 0}
+
+    txns = (
+        await db.execute(
+            select(Transaction).where(
+                Transaction.category_id.is_(None),
+                Transaction.is_transfer.is_(False),
+            )
+        )
+    ).scalars().all()
+
+    suggested = 0
+    for txn in txns:
+        try:
+            name = await provider.suggest_category(txn.description_raw, cat_names)
+            if name and name in cat_name_to_id:
+                txn.category_id = cat_name_to_id[name]
+                txn.category_source = CategorySource.ai_suggested
+                txn.needs_review = True
+                suggested += 1
+        except Exception:
+            logger.warning("AI suggestion failed for transaction %s", txn.id, exc_info=True)
+
+    await db.commit()
+    return {"suggested": suggested, "checked": len(txns)}
 
 
 @router.get("/transactions", response_model=TransactionListResponse, dependencies=[Depends(require_member)])
