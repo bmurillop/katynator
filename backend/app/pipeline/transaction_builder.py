@@ -12,7 +12,8 @@ from app.ai.base import AIProvider, FinancialParseResult
 from app.models.account import Account
 from app.models.category_rule import CategoryRule
 from app.models.document import Document
-from app.models.enums import AccountType, Currency, PatternSource
+from app.models.category import Category
+from app.models.enums import AccountType, CategorySource, Currency, PatternSource
 from app.models.entity import Entity
 from app.models.entity_pattern import EntityPattern
 from app.models.person import Person
@@ -129,6 +130,13 @@ async def build_transactions(
         (await db.execute(select(CategoryRule))).scalars().all()
     )
 
+    # Load categories once for AI suggestions
+    all_categories: list[Category] = list(
+        (await db.execute(select(Category))).scalars().all()
+    )
+    cat_name_to_id: dict[str, uuid.UUID] = {c.name: c.id for c in all_categories}
+    cat_names: list[str] = list(cat_name_to_id.keys())
+
     transaction_ids: list[uuid.UUID] = []
 
     for txn in parse_result.transactions:
@@ -143,7 +151,21 @@ async def build_transactions(
         )
 
         category_id, category_source, is_transfer = apply_rules(rules, merchant_entity_id, desc_norm)
-        needs_review = force_review or (category_id is None and not is_transfer)
+
+        # When no rule matched, ask AI to suggest a category
+        if category_id is None and not is_transfer and cat_names:
+            try:
+                suggested_name = await ai_provider.suggest_category(txn.description, cat_names)
+                if suggested_name and suggested_name in cat_name_to_id:
+                    category_id = cat_name_to_id[suggested_name]
+                    category_source = CategorySource.ai_suggested
+                    logger.debug("AI suggested %r for %r", suggested_name, txn.description)
+            except Exception:
+                logger.warning("AI category suggestion failed for %r", txn.description, exc_info=True)
+
+        needs_review = force_review or (category_id is None and not is_transfer) or (
+            category_source == CategorySource.ai_suggested
+        )
 
         # INSERT ... ON CONFLICT DO NOTHING RETURNING id
         stmt = (

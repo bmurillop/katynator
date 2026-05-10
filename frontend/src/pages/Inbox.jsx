@@ -190,7 +190,9 @@ function ReviewTab() {
   const save = async (txn) => {
     const edit = edits[txn.id] || {}
     const patch = { needs_review: false }
-    if ('category_id' in edit) patch.category_id = edit.category_id || null
+    // Always send category_id so the backend upgrades ai_suggested → user_set
+    const catId = 'category_id' in edit ? edit.category_id : txn.category_id
+    patch.category_id = catId || null
     if ('merchant_entity_id' in edit) patch.merchant_entity_id = edit.merchant_entity_id || null
     await updateTransaction(txn.id, patch)
     setEdits((prev) => { const n = { ...prev }; delete n[txn.id]; return n })
@@ -251,9 +253,16 @@ function ReviewTab() {
                     <CurrencyAmount amount={txn.amount} currency={txn.currency} direction={txn.direction} />
                   </td>
                   <td className="table-cell text-xs">
-                    {txn.category_id
-                      ? <span className="text-ink/70">{catMap[txn.category_id]?.name}</span>
-                      : <span className="text-amber-500">Sin categoría</span>}
+                    {txn.category_id ? (
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-ink/70">{catMap[txn.category_id]?.name}</span>
+                        {txn.category_source === 'ai_suggested' && (
+                          <span className="badge bg-violet-100 text-violet-600 text-[9px] py-0 leading-4">IA</span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-amber-500">Sin categoría</span>
+                    )}
                   </td>
                   <td className="table-cell text-ink/30 text-xs text-center">{isOpen ? '▲' : '▼'}</td>
                 </tr>
@@ -305,19 +314,28 @@ function ReviewTab() {
                         </div>
 
                         {/* Actions */}
-                        <div className="flex gap-2 shrink-0 pb-0.5">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); save(txn) }}
-                            className="btn-primary text-xs py-1.5 px-4"
-                          >
-                            Guardar y cerrar
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); dismiss(txn) }}
-                            className="btn-ghost text-xs py-1.5 px-3 border border-brown-600/30"
-                          >
-                            Solo cerrar
-                          </button>
+                        <div className="flex flex-col gap-1.5 shrink-0 pb-0.5">
+                          {txn.category_source === 'ai_suggested' && !('category_id' in (edits[txn.id] || {})) && (
+                            <p className="text-[10px] text-violet-500 font-medium">
+                              ✦ Sugerencia de IA · confirma o cambia abajo
+                            </p>
+                          )}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); save(txn) }}
+                              className="btn-primary text-xs py-1.5 px-4"
+                            >
+                              {txn.category_source === 'ai_suggested' && !('category_id' in (edits[txn.id] || {}))
+                                ? '✓ Confirmar'
+                                : 'Guardar y cerrar'}
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); dismiss(txn) }}
+                              className="btn-ghost text-xs py-1.5 px-3 border border-brown-600/30"
+                            >
+                              Solo cerrar
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </td>
