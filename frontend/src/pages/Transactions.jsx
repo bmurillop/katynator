@@ -14,6 +14,14 @@ import Pagination from '../components/Pagination'
 const PAGE_SIZE = 50
 const REVIEW_PAGE_SIZE = 20
 
+const catLabel = (catMap, id) => {
+  if (!id) return null
+  const cat = catMap[id]
+  if (!cat) return null
+  if (cat.parent_id && catMap[cat.parent_id]) return `${catMap[cat.parent_id].name} / ${cat.name}`
+  return cat.name
+}
+
 const MATCH_TYPE_LABELS = {
   starts_with: 'Empieza con',
   contains: 'Contiene',
@@ -561,7 +569,7 @@ function TransactionListTab() {
                             : 'border-brown-600/40 text-ink/40 hover:border-amber-500/50 hover:text-amber-500'
                         }`}
                       >
-                        {txn.category_id ? catMap[txn.category_id]?.name ?? '—' : 'Sin categoría'}
+                        {txn.category_id ? catLabel(catMap, txn.category_id) ?? '—' : 'Sin categoría'}
                       </button>
                     )}
                   </td>
@@ -766,7 +774,7 @@ function ReviewTab() {
                     <td className="table-cell text-xs">
                       {txn.category_id ? (
                         <span className="flex items-center gap-1.5">
-                          <span className="text-ink/70">{catMap[txn.category_id]?.name}</span>
+                          <span className="text-ink/70">{catLabel(catMap, txn.category_id)}</span>
                           {txn.category_source === 'ai_suggested' && (
                             <span className="badge bg-violet-100 text-violet-600 text-[9px] py-0 leading-4">IA</span>
                           )}
@@ -1009,7 +1017,7 @@ function CategoryRulesTab({ isAdmin }) {
                         border: `1px solid ${cat.color ?? '#C99828'}40`,
                       }}>
                         {cat.icon && <span className="mr-1">{cat.icon}</span>}
-                        {cat.name}
+                        {catLabel(catMap, rule.category_id)}
                       </span>
                     ) : (
                       <span className="text-xs text-ink/30">—</span>
