@@ -142,8 +142,8 @@ async def build_transactions(
             txn.description, db, ai_provider, document_id=document.id
         )
 
-        category_id, category_source = apply_rules(rules, merchant_entity_id, desc_norm)
-        needs_review = force_review or (category_id is None)
+        category_id, category_source, is_transfer = apply_rules(rules, merchant_entity_id, desc_norm)
+        needs_review = force_review or (category_id is None and not is_transfer)
 
         # INSERT ... ON CONFLICT DO NOTHING RETURNING id
         stmt = (
@@ -163,6 +163,7 @@ async def build_transactions(
                 category_source=category_source,
                 dedup_key=dedup_key,
                 needs_review=needs_review,
+                is_transfer=is_transfer,
             )
             .on_conflict_do_nothing(constraint="uq_transactions_account_dedup")
             .returning(Transaction.id)

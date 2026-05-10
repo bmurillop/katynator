@@ -2,6 +2,7 @@ import uuid
 from typing import Optional
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Enum as SAEnum,
     ForeignKey,
@@ -24,6 +25,10 @@ class CategoryRule(Base, PrimaryKeyMixin, TimestampMixin):
             "entity_id IS NOT NULL OR memo_pattern IS NOT NULL",
             name="ck_rule_has_entity_or_memo",
         ),
+        CheckConstraint(
+            "category_id IS NOT NULL OR sets_transfer = TRUE",
+            name="ck_rule_has_category_or_transfer",
+        ),
     )
 
     entity_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -33,9 +38,10 @@ class CategoryRule(Base, PrimaryKeyMixin, TimestampMixin):
     match_type: Mapped[MatchType] = mapped_column(
         SAEnum(MatchType, name="match_type"), nullable=False
     )
-    category_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("categories.id"), nullable=False
+    category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True
     )
+    sets_transfer: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
     source: Mapped[RuleSource] = mapped_column(
         SAEnum(RuleSource, name="rule_source"), nullable=False

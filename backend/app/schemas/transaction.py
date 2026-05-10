@@ -24,6 +24,7 @@ class TransactionOut(BaseModel):
     category_id: Optional[UUID]
     category_source: Optional[CategorySource]
     needs_review: bool
+    is_transfer: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -34,6 +35,7 @@ class TransactionUpdate(BaseModel):
     category_source: Optional[CategorySource] = None
     merchant_entity_id: Optional[UUID] = None
     needs_review: Optional[bool] = None
+    is_transfer: Optional[bool] = None
 
 
 class TransactionSummaryItem(BaseModel):

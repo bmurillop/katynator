@@ -55,6 +55,7 @@ class Transaction(Base, PrimaryKeyMixin, TimestampMixin):
     )
     dedup_key: Mapped[str] = mapped_column(String(64), nullable=False)
     needs_review: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_transfer: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     account = relationship("Account", back_populates="transactions", lazy="raise")
     merchant_entity = relationship("Entity", lazy="raise")

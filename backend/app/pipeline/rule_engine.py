@@ -12,12 +12,12 @@ def apply_rules(
     rules: list[CategoryRule],
     entity_id: Optional[uuid.UUID],
     description_normalized: str,
-) -> tuple[Optional[uuid.UUID], Optional[CategorySource]]:
-    """Two-tier category rule resolution.
+) -> tuple[Optional[uuid.UUID], Optional[CategorySource], bool]:
+    """Two-tier category/transfer rule resolution.
 
-    Evaluates pre-loaded rules against a transaction's entity and normalised
-    description. Returns (category_id, CategorySource.rule) on the first match,
-    or (None, None) when no rule applies.
+    Returns (category_id, CategorySource.rule, is_transfer) on the first match.
+    Transfer rules return (None, None, True); category rules return (category_id, rule, False).
+    Returns (None, None, False) when no rule matches.
 
     Rules are sorted by priority DESC then created_at DESC before evaluation so
     the most specific / most recent rule wins ties.
@@ -35,9 +35,11 @@ def apply_rules(
 
     for rule in candidates:
         if _memo_matches(rule, description_normalized):
-            return rule.category_id, CategorySource.rule
+            if rule.sets_transfer:
+                return None, None, True
+            return rule.category_id, CategorySource.rule, False
 
-    return None, None
+    return None, None, False
 
 
 def _memo_matches(rule: CategoryRule, description_normalized: str) -> bool:

@@ -51,6 +51,7 @@ async def transaction_summary(
             func.sum(Transaction.amount).label("total"),
             func.count(Transaction.id).label("count"),
         )
+        .where(Transaction.is_transfer.is_(False))
         .group_by(Transaction.currency, Transaction.direction)
     )
 
@@ -108,7 +109,7 @@ async def transaction_summary_monthly(
         Transaction.direction,
         func.sum(Transaction.amount).label("total"),
         func.count(Transaction.id).label("count"),
-    ).where(Transaction.date >= start_date)
+    ).where(Transaction.date >= start_date, Transaction.is_transfer.is_(False))
 
     if account_id:
         q = q.where(Transaction.account_id == account_id)

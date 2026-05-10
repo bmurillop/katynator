@@ -16,6 +16,8 @@ const MATCH_TYPE_LABELS = {
 }
 
 function CategoryModal({ txn, categories, onClose, onSaved }) {
+  const isTransfer = txn.is_transfer
+  const [mode, setMode] = useState(isTransfer ? 'transfer' : 'categorize')
   const [categoryId, setCategoryId] = useState(txn.category_id || '')
   const [scope, setScope] = useState(txn.merchant_entity_id ? 'entity' : 'transaction')
   const [limitToEntity, setLimitToEntity] = useState(!!txn.merchant_entity_id)
@@ -44,22 +46,24 @@ function CategoryModal({ txn, categories, onClose, onSaved }) {
     staleTime: 2000,
   })
 
+  const canSave = mode === 'transfer' || (mode === 'categorize' && !!categoryId)
+
   const handleSave = async () => {
-    if (!categoryId) return
+    if (!canSave) return
     setSaving(true)
     try {
-      await updateTransaction(txn.id, {
-        category_id: categoryId,
-        category_source: 'user_set',
-        needs_review: false,
-      })
+      if (mode === 'transfer') {
+        await updateTransaction(txn.id, { is_transfer: true, category_id: null, needs_review: false })
+      } else {
+        await updateTransaction(txn.id, { category_id: categoryId, category_source: 'user_set', is_transfer: false, needs_review: false })
+      }
 
       if (scope !== 'transaction') {
         const rulePayload = {
-          category_id: categoryId,
           priority: 50,
           source: 'user_confirmed',
           match_type: 'any',
+          ...(mode === 'transfer' ? { sets_transfer: true } : { category_id: categoryId }),
         }
         if (scope === 'entity' && txn.merchant_entity_id) {
           rulePayload.entity_id = txn.merchant_entity_id
@@ -87,34 +91,64 @@ function CategoryModal({ txn, categories, onClose, onSaved }) {
 
   const scopeOptions = [
     { value: 'transaction', label: 'Solo esta transacción' },
-    ...(txn.merchant_entity_id
-      ? [{ value: 'entity', label: 'Todas las de esta entidad' }]
-      : []),
+    ...(txn.merchant_entity_id ? [{ value: 'entity', label: 'Todas las de esta entidad' }] : []),
     { value: 'pattern', label: 'Por patrón de descripción' },
   ]
+
+  const showScopeAndPattern = mode === 'transfer' || (mode === 'categorize' && !!categoryId)
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white border border-brown-600/20 rounded-xl w-full max-w-lg shadow-2xl">
         <div className="px-5 py-4 border-b border-brown-600/15">
-          <h3 className="font-semibold text-ink">Categorizar transacción</h3>
+          <h3 className="font-semibold text-ink">Clasificar transacción</h3>
           <p className="text-xs text-ink/50 mt-0.5 font-mono truncate">{txn.description_raw}</p>
         </div>
 
         <div className="px-5 py-4 space-y-4">
-          {/* Category */}
-          <div>
-            <label className="block text-xs font-medium text-ink/60 mb-1.5">Categoría</label>
-            <select className="select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">— Seleccionar —</option>
-              {categories?.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+          {/* Mode toggle */}
+          <div className="flex rounded-lg border border-brown-600/20 overflow-hidden">
+            {[
+              { value: 'categorize', label: 'Gasto / Ingreso' },
+              { value: 'transfer', label: '⇌ Transferencia interna' },
+            ].map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => setMode(value)}
+                className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                  mode === value
+                    ? value === 'transfer'
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-amber-500/10 text-amber-700'
+                    : 'text-ink/50 hover:text-ink'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
-          {/* Scope */}
-          {categoryId && (
+          {mode === 'transfer' && (
+            <p className="text-xs text-ink/50 bg-[#F5EFE0] rounded-lg px-3 py-2">
+              Esta transacción se excluirá de todos los reportes de gastos e ingresos. Úsala para pagos de tarjetas, traspasos entre cuentas o conversiones de moneda.
+            </p>
+          )}
+
+          {/* Category (only for categorize mode) */}
+          {mode === 'categorize' && (
+            <div>
+              <label className="block text-xs font-medium text-ink/60 mb-1.5">Categoría</label>
+              <select className="select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+                <option value="">— Seleccionar —</option>
+                {categories?.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Scope — shown once mode is chosen and (transfer or category selected) */}
+          {showScopeAndPattern && (
             <div>
               <label className="block text-xs font-medium text-ink/60 mb-2">Crear regla para:</label>
               <div className="space-y-2">
@@ -136,7 +170,7 @@ function CategoryModal({ txn, categories, onClose, onSaved }) {
           )}
 
           {/* Pattern controls */}
-          {categoryId && showPatternControls && (
+          {showScopeAndPattern && showPatternControls && (
             <div className="bg-[#F5EFE0] rounded-xl p-4 space-y-3">
               <div className="flex gap-2">
                 <div className="flex-1">
@@ -199,7 +233,7 @@ function CategoryModal({ txn, categories, onClose, onSaved }) {
           )}
 
           {/* Apply-to-existing for entity scope */}
-          {categoryId && scope === 'entity' && txn.merchant_entity_id && (
+          {showScopeAndPattern && scope === 'entity' && txn.merchant_entity_id && (
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -214,7 +248,7 @@ function CategoryModal({ txn, categories, onClose, onSaved }) {
 
         <div className="px-5 py-4 border-t border-brown-600/15 flex gap-2 justify-end">
           <button onClick={onClose} className="btn-ghost text-sm">Cancelar</button>
-          <button onClick={handleSave} disabled={!categoryId || saving} className="btn-primary text-sm">
+          <button onClick={handleSave} disabled={!canSave || saving} className="btn-primary text-sm">
             {saving ? 'Guardando…' : 'Guardar'}
           </button>
         </div>
@@ -366,40 +400,56 @@ export default function Transactions() {
                 <tr><td colSpan={6} className="table-cell text-center text-ink/40 py-12">Sin transacciones</td></tr>
               )}
               {data?.items?.map((txn) => (
-                <tr key={txn.id} className={`table-row ${txn.needs_review ? 'bg-amber-500/5' : ''}`}>
+                <tr key={txn.id} className={`table-row ${txn.is_transfer ? 'opacity-50' : txn.needs_review ? 'bg-amber-500/5' : ''}`}>
                   <td className="table-cell whitespace-nowrap text-ink/50 text-xs">
                     {new Date(txn.date + 'T12:00:00').toLocaleDateString('es-CR')}
                   </td>
                   <td className="table-cell max-w-xs">
                     <p className="truncate text-ink/90">{txn.description_raw}</p>
-                    {txn.needs_review && (
-                      <span className="badge bg-amber-500/20 text-amber-500 text-[10px]">Revisar</span>
-                    )}
+                    <div className="flex gap-1 mt-0.5 flex-wrap">
+                      {txn.is_transfer && <span className="badge bg-blue-100 text-blue-600 text-[10px]">⇌ Transferencia</span>}
+                      {txn.needs_review && !txn.is_transfer && <span className="badge bg-amber-500/20 text-amber-500 text-[10px]">Revisar</span>}
+                    </div>
                   </td>
                   <td className="table-cell text-right">
                     <CurrencyAmount amount={txn.amount} currency={txn.currency} direction={txn.direction} />
                   </td>
                   <td className="table-cell"><CurrencyBadge currency={txn.currency} /></td>
                   <td className="table-cell">
-                    <button
-                      onClick={() => setModalTxn(txn)}
-                      className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
-                        txn.category_id
-                          ? 'border-green-800/50 text-green-600 hover:border-green-600'
-                          : 'border-brown-600/40 text-ink/40 hover:border-amber-500/50 hover:text-amber-500'
-                      }`}
-                    >
-                      {txn.category_id ? catMap[txn.category_id]?.name ?? '—' : 'Sin categoría'}
-                    </button>
+                    {txn.is_transfer ? (
+                      <span className="text-xs text-ink/30 italic">excluida</span>
+                    ) : (
+                      <button
+                        onClick={() => setModalTxn(txn)}
+                        className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                          txn.category_id
+                            ? 'border-green-800/50 text-green-600 hover:border-green-600'
+                            : 'border-brown-600/40 text-ink/40 hover:border-amber-500/50 hover:text-amber-500'
+                        }`}
+                      >
+                        {txn.category_id ? catMap[txn.category_id]?.name ?? '—' : 'Sin categoría'}
+                      </button>
+                    )}
                   </td>
                   <td className="table-cell">
-                    <button
-                      onClick={() => toggleReview(txn)}
-                      title={txn.needs_review ? 'Marcar revisado' : 'Marcar para revisar'}
-                      className={`text-xs ${txn.needs_review ? 'text-amber-500' : 'text-ink/20 hover:text-ink/50'}`}
-                    >
-                      ⚑
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setModalTxn(txn)}
+                        title="Clasificar"
+                        className="text-xs text-ink/20 hover:text-amber-500"
+                      >
+                        ✎
+                      </button>
+                      {!txn.is_transfer && (
+                        <button
+                          onClick={() => toggleReview(txn)}
+                          title={txn.needs_review ? 'Marcar revisado' : 'Marcar para revisar'}
+                          className={`text-xs ${txn.needs_review ? 'text-amber-500' : 'text-ink/20 hover:text-ink/50'}`}
+                        >
+                          ⚑
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

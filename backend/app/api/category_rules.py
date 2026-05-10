@@ -68,10 +68,17 @@ async def reapply_rules(db: AsyncSession = Depends(get_db)):
 
     applied = 0
     for txn in txns:
-        cat_id, cat_source = apply_rules(rules, txn.merchant_entity_id, txn.description_normalized)
-        if cat_id and txn.category_id != cat_id:
+        cat_id, cat_source, is_transfer = apply_rules(rules, txn.merchant_entity_id, txn.description_normalized)
+        if is_transfer and not txn.is_transfer:
+            txn.is_transfer = True
+            txn.category_id = None
+            txn.category_source = None
+            txn.needs_review = False
+            applied += 1
+        elif cat_id and txn.category_id != cat_id:
             txn.category_id = cat_id
             txn.category_source = cat_source
+            txn.is_transfer = False
             txn.needs_review = False
             applied += 1
 
@@ -94,6 +101,7 @@ async def create_rule(body: CategoryRuleCreate, db: AsyncSession = Depends(get_d
         memo_pattern=body.memo_pattern,
         match_type=body.match_type,
         category_id=body.category_id,
+        sets_transfer=body.sets_transfer,
         priority=body.priority,
         source=body.source,
     )
@@ -131,11 +139,20 @@ async def apply_rule(rule_id: UUID, db: AsyncSession = Depends(get_db)):
     txns = (await db.execute(q)).scalars().all()
     applied = 0
     for txn in txns:
-        if txn.category_id != rule.category_id:
-            txn.category_id = rule.category_id
-            txn.category_source = CategorySource.rule
-            txn.needs_review = False
-            applied += 1
+        if rule.sets_transfer:
+            if not txn.is_transfer:
+                txn.is_transfer = True
+                txn.category_id = None
+                txn.category_source = None
+                txn.needs_review = False
+                applied += 1
+        else:
+            if txn.category_id != rule.category_id:
+                txn.category_id = rule.category_id
+                txn.category_source = CategorySource.rule
+                txn.is_transfer = False
+                txn.needs_review = False
+                applied += 1
 
     await db.commit()
     return {"applied": applied}
