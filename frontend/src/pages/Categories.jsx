@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { listCategories, createCategory, updateCategory } from '../api/categories'
-import { listRules, createRule, deleteRule } from '../api/categoryRules'
+import { listRules, createRule, updateRule, deleteRule } from '../api/categoryRules'
 import { listEntities } from '../api/entities'
 import { useAuth } from '../context/AuthContext'
 
@@ -74,18 +74,102 @@ function CategoryForm({ initial, onSave, onCancel }) {
   )
 }
 
+// ── Shared rule form fields ───────────────────────────────────────────────────
+
+function RuleFields({ entityId, setEntityId, memoPattern, setMemoPattern, matchType, setMatchType,
+  categoryId, setCategoryId, setsTransfer, setSetsTransfer, priority, setPriority, categories, entities }) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="block text-xs text-ink/50 mb-1">Entidad (opcional)</label>
+        <select className="select" value={entityId} onChange={(e) => setEntityId(e.target.value)}>
+          <option value="">— Cualquier entidad —</option>
+          {entities?.items?.map((e) => (
+            <option key={e.id} value={e.id}>{e.display_name || e.canonical_name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs text-ink/50 mb-1">Patrón del memo (opcional)</label>
+          <input
+            type="text"
+            className="input font-mono"
+            placeholder="pago tarjeta…"
+            value={memoPattern}
+            onChange={(e) => setMemoPattern(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-ink/50 mb-1">Tipo de match</label>
+          <select className="select" value={matchType} onChange={(e) => setMatchType(e.target.value)}>
+            <option value="starts_with">Empieza con</option>
+            <option value="contains">Contiene</option>
+            <option value="exact">Exacto</option>
+            <option value="regex">Regex</option>
+            <option value="any">Cualquier</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs text-ink/50 mb-1">
+            {setsTransfer ? 'Tipo' : 'Categoría *'}
+          </label>
+          {setsTransfer ? (
+            <div className="input flex items-center gap-2 text-blue-600 bg-blue-50/60 text-sm cursor-default">
+              ⇌ Transferencia interna
+            </div>
+          ) : (
+            <select className="select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+              <option value="">— Seleccionar —</option>
+              {categories?.map((c) => (
+                <option key={c.id} value={c.id}>{c.icon ? `${c.icon} ` : ''}{c.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div>
+          <label className="block text-xs text-ink/50 mb-1">Prioridad (1–100)</label>
+          <input
+            type="number"
+            className="input"
+            min={1}
+            max={100}
+            value={priority}
+            onChange={(e) => setPriority(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <label className="flex items-center gap-2 cursor-pointer pt-1">
+        <input
+          type="checkbox"
+          checked={setsTransfer}
+          onChange={(e) => { setSetsTransfer(e.target.checked); if (e.target.checked) setCategoryId('') }}
+          className="accent-amber-500 w-4 h-4"
+        />
+        <span className="text-sm text-ink/70">Marcar como transferencia interna (excluir de reportes)</span>
+      </label>
+    </div>
+  )
+}
+
 // ── New rule modal ───────────────────────────────────────────────────────────
 
 function NewRuleModal({ categories, entities, onClose, onSaved }) {
   const [entityId, setEntityId] = useState('')
   const [memoPattern, setMemoPattern] = useState('')
-  const [matchType, setMatchType] = useState('contains')
+  const [matchType, setMatchType] = useState('starts_with')
   const [categoryId, setCategoryId] = useState('')
+  const [setsTransfer, setSetsTransfer] = useState(false)
   const [priority, setPriority] = useState(50)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const canSave = categoryId && (entityId || memoPattern.trim())
+  const canSave = (setsTransfer || categoryId) && (entityId || memoPattern.trim())
 
   const handleSave = async () => {
     if (!canSave) return
@@ -96,7 +180,8 @@ function NewRuleModal({ categories, entities, onClose, onSaved }) {
         entity_id: entityId || undefined,
         memo_pattern: memoPattern.trim() || undefined,
         match_type: matchType,
-        category_id: categoryId,
+        category_id: setsTransfer ? undefined : categoryId,
+        sets_transfer: setsTransfer,
         priority: Number(priority),
         source: 'user_confirmed',
       })
@@ -112,76 +197,80 @@ function NewRuleModal({ categories, entities, onClose, onSaved }) {
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div className="bg-white border border-brown-600/20 rounded-xl w-full max-w-md shadow-2xl">
         <div className="px-5 py-4 border-b border-brown-600/15">
-          <h3 className="font-semibold text-ink">Nueva regla de categoría</h3>
+          <h3 className="font-semibold text-ink">Nueva regla</h3>
           <p className="text-xs text-ink/50 mt-0.5">Debe especificar al menos entidad o patrón de memo</p>
         </div>
-
-        <div className="px-5 py-4 space-y-3">
-          <div>
-            <label className="block text-xs text-ink/50 mb-1">Entidad (opcional)</label>
-            <select className="select" value={entityId} onChange={(e) => setEntityId(e.target.value)}>
-              <option value="">— Cualquier entidad —</option>
-              {entities?.items?.map((e) => (
-                <option key={e.id} value={e.id}>{e.canonical_name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-ink/50 mb-1">Patrón del memo (opcional)</label>
-              <input
-                type="text"
-                className="input"
-                placeholder="supermercado…"
-                value={memoPattern}
-                onChange={(e) => setMemoPattern(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-ink/50 mb-1">Tipo de match</label>
-              <select className="select" value={matchType} onChange={(e) => setMatchType(e.target.value)}>
-                <option value="starts_with">Empieza con</option>
-                <option value="contains">Contiene</option>
-                <option value="exact">Exacto</option>
-                <option value="regex">Regex</option>
-                <option value="any">Cualquier</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-ink/50 mb-1">Categoría *</label>
-              <select className="select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-                <option value="">— Seleccionar —</option>
-                {categories?.map((c) => (
-                  <option key={c.id} value={c.id}>{c.icon ? `${c.icon} ` : ''}{c.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-ink/50 mb-1">Prioridad (1–100)</label>
-              <input
-                type="number"
-                className="input"
-                min={1}
-                max={100}
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-              />
-            </div>
-          </div>
-
+        <div className="px-5 py-4">
+          <RuleFields {...{ entityId, setEntityId, memoPattern, setMemoPattern, matchType, setMatchType,
+            categoryId, setCategoryId, setsTransfer, setSetsTransfer, priority, setPriority, categories, entities }} />
           {error && (
-            <p className="text-red-500 text-xs bg-red-50 border border-red-200 rounded px-3 py-2">{error}</p>
+            <p className="text-red-500 text-xs bg-red-50 border border-red-200 rounded px-3 py-2 mt-3">{error}</p>
           )}
         </div>
-
         <div className="px-5 py-4 border-t border-brown-600/15 flex gap-2 justify-end">
           <button onClick={onClose} className="btn-ghost text-sm">Cancelar</button>
           <button onClick={handleSave} disabled={!canSave || saving} className="btn-primary text-sm">
             {saving ? 'Guardando…' : 'Crear regla'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Edit rule modal ───────────────────────────────────────────────────────────
+
+function EditRuleModal({ rule, categories, entities, onClose, onSaved }) {
+  const [entityId, setEntityId] = useState(rule.entity_id || '')
+  const [memoPattern, setMemoPattern] = useState(rule.memo_pattern || '')
+  const [matchType, setMatchType] = useState(rule.match_type)
+  const [categoryId, setCategoryId] = useState(rule.category_id || '')
+  const [setsTransfer, setSetsTransfer] = useState(rule.sets_transfer || false)
+  const [priority, setPriority] = useState(rule.priority)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const canSave = (setsTransfer || categoryId) && (entityId || memoPattern.trim())
+
+  const handleSave = async () => {
+    if (!canSave) return
+    setSaving(true)
+    setError('')
+    try {
+      await updateRule(rule.id, {
+        entity_id: entityId || null,
+        memo_pattern: memoPattern.trim() || null,
+        match_type: matchType,
+        category_id: setsTransfer ? null : (categoryId || null),
+        sets_transfer: setsTransfer,
+        priority: Number(priority),
+      })
+      onSaved()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Error al guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white border border-brown-600/20 rounded-xl w-full max-w-md shadow-2xl">
+        <div className="px-5 py-4 border-b border-brown-600/15">
+          <h3 className="font-semibold text-ink">Editar regla</h3>
+          <p className="text-xs text-ink/50 mt-0.5">Fuente cambiará a Manual al guardar</p>
+        </div>
+        <div className="px-5 py-4">
+          <RuleFields {...{ entityId, setEntityId, memoPattern, setMemoPattern, matchType, setMatchType,
+            categoryId, setCategoryId, setsTransfer, setSetsTransfer, priority, setPriority, categories, entities }} />
+          {error && (
+            <p className="text-red-500 text-xs bg-red-50 border border-red-200 rounded px-3 py-2 mt-3">{error}</p>
+          )}
+        </div>
+        <div className="px-5 py-4 border-t border-brown-600/15 flex gap-2 justify-end">
+          <button onClick={onClose} className="btn-ghost text-sm">Cancelar</button>
+          <button onClick={handleSave} disabled={!canSave || saving} className="btn-primary text-sm">
+            {saving ? 'Guardando…' : 'Guardar cambios'}
           </button>
         </div>
       </div>
@@ -198,6 +287,7 @@ export default function Categories() {
   const [showNewCat, setShowNewCat] = useState(false)
   const [editId, setEditId] = useState(null)
   const [showNewRule, setShowNewRule] = useState(false)
+  const [editRule, setEditRule] = useState(null)
   const qc = useQueryClient()
 
   const { data: categories } = useQuery({ queryKey: ['categories'], queryFn: listCategories })
@@ -241,6 +331,15 @@ export default function Categories() {
           entities={entities}
           onClose={() => setShowNewRule(false)}
           onSaved={() => { qc.invalidateQueries({ queryKey: ['rules'] }); setShowNewRule(false) }}
+        />
+      )}
+      {editRule && (
+        <EditRuleModal
+          rule={editRule}
+          categories={categories}
+          entities={entities}
+          onClose={() => setEditRule(null)}
+          onSaved={() => { qc.invalidateQueries({ queryKey: ['rules'] }); setEditRule(null) }}
         />
       )}
 
@@ -365,10 +464,10 @@ export default function Categories() {
               <thead className="border-b border-brown-600/20">
                 <tr>
                   <th className="table-header">Condición</th>
-                  <th className="table-header">Categoría</th>
-                  <th className="table-header w-24 text-center">Prioridad</th>
-                  <th className="table-header w-24">Fuente</th>
-                  {isAdmin && <th className="table-header w-10"></th>}
+                  <th className="table-header">Resultado</th>
+                  <th className="table-header w-20 text-center">Prioridad</th>
+                  <th className="table-header w-20">Fuente</th>
+                  {isAdmin && <th className="table-header w-16"></th>}
                 </tr>
               </thead>
               <tbody>
@@ -384,12 +483,16 @@ export default function Categories() {
                   const entity = rule.entity_id ? entityMap[rule.entity_id] : null
                   const cat = catMap[rule.category_id]
                   return (
-                    <tr key={rule.id} className="table-row">
+                    <tr
+                      key={rule.id}
+                      className={`table-row ${isAdmin ? 'cursor-pointer' : ''}`}
+                      onClick={isAdmin ? () => setEditRule(rule) : undefined}
+                    >
                       <td className="table-cell">
                         <div className="flex flex-wrap items-center gap-1.5">
                           {entity && (
                             <span className="badge bg-brown-600/15 text-brown-900">
-                              {entity.canonical_name}
+                              {entity.display_name || entity.canonical_name}
                             </span>
                           )}
                           {rule.memo_pattern && (
@@ -406,7 +509,9 @@ export default function Categories() {
                         </div>
                       </td>
                       <td className="table-cell">
-                        {cat ? (
+                        {rule.sets_transfer ? (
+                          <span className="badge bg-blue-100 text-blue-600 text-[10px]">⇌ Transferencia interna</span>
+                        ) : cat ? (
                           <span
                             className="badge"
                             style={{
@@ -435,14 +540,23 @@ export default function Categories() {
                         </span>
                       </td>
                       {isAdmin && (
-                        <td className="table-cell">
-                          <button
-                            onClick={() => handleDeleteRule(rule.id)}
-                            className="text-red-400/60 hover:text-red-500 transition-colors"
-                            title="Eliminar regla"
-                          >
-                            ✕
-                          </button>
+                        <td className="table-cell" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={() => setEditRule(rule)}
+                              className="text-ink/30 hover:text-amber-500 transition-colors text-xs"
+                              title="Editar regla"
+                            >
+                              ✎
+                            </button>
+                            <button
+                              onClick={() => handleDeleteRule(rule.id)}
+                              className="text-red-400/60 hover:text-red-500 transition-colors text-xs"
+                              title="Eliminar regla"
+                            >
+                              ✕
+                            </button>
+                          </div>
                         </td>
                       )}
                     </tr>
