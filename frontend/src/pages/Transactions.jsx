@@ -440,6 +440,7 @@ function TransactionListTab() {
   const [currency, setCurrency] = useState('')
   const [needsReview, setNeedsReview] = useState(false)
   const [accountId, setAccountId] = useState('')
+  const [categoryId, setCategoryId] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [modalTxn, setModalTxn] = useState(null)
@@ -450,6 +451,7 @@ function TransactionListTab() {
     ...(currency && { currency }),
     ...(needsReview && { needs_review: true }),
     ...(accountId && { account_id: accountId }),
+    ...(categoryId && { category_id: categoryId }),
     ...(dateFrom && { date_from: dateFrom }),
     ...(dateTo && { date_to: dateTo }),
   }
@@ -503,6 +505,17 @@ function TransactionListTab() {
               </option>
             ))}
           </select>
+        </div>
+        <div>
+          <label className="block text-xs text-ink/50 mb-1">Categoría</label>
+          <CategoryPicker
+            categories={categories || []}
+            value={categoryId}
+            onChange={(e) => { setCategoryId(e.target.value); resetPage() }}
+            placeholder="Todas"
+            filterMode
+            className="select w-48"
+          />
         </div>
         <div>
           <label className="block text-xs text-ink/50 mb-1">Desde</label>

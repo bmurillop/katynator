@@ -1,10 +1,14 @@
 /**
- * Grouped category <select> that shows parents as <optgroup> labels
- * and only leaf nodes as selectable <option>s.
+ * Grouped category <select>.
  *
- * Categories without children are selectable directly (they are their own leaf).
- * Categories with children are shown as group headers; only the children appear
- * as options.
+ * Default mode (filterMode=false):
+ *   Parents with children appear as non-selectable <optgroup> headers; only
+ *   leaf nodes are selectable. Parents without children are selectable directly.
+ *
+ * filterMode=true:
+ *   All categories are selectable. Parents with children appear as plain
+ *   <option>s followed by indented child <option>s, so the user can filter by
+ *   either an entire group or a specific subcategory.
  */
 export default function CategoryPicker({
   categories = [],
@@ -13,6 +17,7 @@ export default function CategoryPicker({
   className = 'select',
   placeholder = '— Sin categoría —',
   disabled = false,
+  filterMode = false,
 }) {
   const parents = categories.filter((c) => !c.parent_id)
   const childMap = {}
@@ -30,6 +35,20 @@ export default function CategoryPicker({
         const children = (childMap[parent.id] || []).sort((a, b) =>
           a.name.localeCompare(b.name, 'es')
         )
+
+        if (filterMode) {
+          return [
+            <option key={parent.id} value={parent.id}>
+              {children.length > 0 ? `${parent.name} (todas)` : parent.name}
+            </option>,
+            ...children.map((child) => (
+              <option key={child.id} value={child.id}>
+                {'  └ '}{child.name}
+              </option>
+            )),
+          ]
+        }
+
         if (children.length > 0) {
           return (
             <optgroup key={parent.id} label={parent.name}>

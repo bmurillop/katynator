@@ -309,7 +309,13 @@ async def list_transactions(
     if direction:
         q = q.where(Transaction.direction == direction)
     if category_id:
-        q = q.where(Transaction.category_id == category_id)
+        child_ids = (await db.execute(
+            select(Category.id).where(Category.parent_id == category_id)
+        )).scalars().all()
+        if child_ids:
+            q = q.where(Transaction.category_id.in_([category_id, *child_ids]))
+        else:
+            q = q.where(Transaction.category_id == category_id)
     if needs_review is not None:
         q = q.where(Transaction.needs_review == needs_review)
     if date_from:
